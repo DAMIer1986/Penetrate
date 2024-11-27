@@ -1,0 +1,47 @@
+server:
+  port: 9338
+spring:
+  application:
+    name: Penetrate
+  threads:
+    virtual:
+      enabled: true
+  task:
+    execution:
+      pool:
+        core-size: 8
+        max-size: 32
+        queue-capacity: 1000
+      thread-name-prefix: async-task-
+    scheduling:
+      pool:
+        size: 4
+      thread-name-prefix: scheduled-task-
+
+nat:
+  mode: client  # server, client, or both
+  server:
+    enabled: false
+  client:
+    enabled: true
+    server-host: 127.0.0.1
+    server-port: 61927
+    enable-ssl: false
+    port-mappings:
+      - local-port: 8080
+        remote-port: 80
+        protocol: tcp
+        enabled: true
+        max-connections: 100
+        connection-timeout: 5000
+        idle-timeout: 600
+    client-id: client001
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always

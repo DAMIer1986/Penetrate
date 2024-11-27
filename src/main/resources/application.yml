@@ -1,0 +1,44 @@
+server:
+  port: 9339
+spring:
+  application:
+    name: Penetrate
+  threads:
+    virtual:
+      enabled: true
+  task:
+    execution:
+      pool:
+        core-size: 8
+        max-size: 32
+        queue-capacity: 1000
+      thread-name-prefix: async-task-
+    scheduling:
+      pool:
+        size: 4
+      thread-name-prefix: scheduled-task-
+
+nat:
+  mode: server  # server, client, or both
+  server:
+    enabled: true
+    client-port: 61927
+    max-connections: 1000
+    enable-ssl: false
+    read-idle-time: 60
+    write-idle-time: 30
+    boss-threads: 1
+    worker-threads: 4
+    auth-timeout: 30
+    enable-access-control: false
+    enable-traffic-control: false
+    max-bytes-per-second: 1048576  # 1MB/s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
