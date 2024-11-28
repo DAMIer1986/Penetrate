@@ -43,7 +43,7 @@ public class PortMappingManager {
     public PortMappingManager(ClientConfig config) {
         int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
-        this.group = new NioEventLoopGroup(processors);
+        this.group = new NioEventLoopGroup(processors * 2);
         // 初始化端口映射
         initializePortMappings();
     }
@@ -101,7 +101,7 @@ public class PortMappingManager {
                     .option(ChannelOption.TCP_NODELAY, true)
                     .option(ChannelOption.SO_KEEPALIVE, true)
                     .option(ChannelOption.SO_REUSEADDR, true)
-                    .option(ChannelOption.SO_RCVBUF, 1048576)
+                    .option(ChannelOption.SO_RCVBUF, 1048576) // 1M
                     .handler(new LocalChannelHandler(mapping, serverChannel, this, serverChannelId));
 
             ChannelFuture future = bootstrap.connect(mapping.getLocalHost(), mapping.getLocalPort()).sync();
@@ -176,6 +176,8 @@ public class PortMappingManager {
             // 解析端口和数据
             int localPort = mappingPort(msg.getExternalPort());
             int serverChannelId = msg.getChannelId();
+
+            log.debug("Write Data : {}--{}", serverChannelId, msg.getData().length);
 
             // 获取对应的本地连接并转发数据
             Channel localChannel = localConnections.get(localPort + "+" + serverChannelId);

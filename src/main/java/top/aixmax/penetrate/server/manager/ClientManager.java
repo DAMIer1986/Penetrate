@@ -113,8 +113,8 @@ public class ClientManager {
                 Unpooled.wrappedBuffer(msg.getBytes())
         );
 
-        log.debug("Forwarded {} bytes to client {} for port {} to {}",
-                payload.length, clientInfo.getClientId(), 1, port);
+        log.debug("Forwarded {} bytes to client {} for port {}",
+                payload.length, clientInfo.getClientId(), port);
     }
 
     /**

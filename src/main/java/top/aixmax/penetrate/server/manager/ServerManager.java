@@ -2,6 +2,8 @@ package top.aixmax.penetrate.server.manager;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -37,15 +39,16 @@ public class ServerManager {
      */
     public void startExternalServer(int externalPort) {
         int processors = Runtime.getRuntime().availableProcessors();
-        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
-        EventLoopGroup workerGroup = new NioEventLoopGroup(processors);
+        EventLoopGroup bossGroup = new EpollEventLoopGroup(1);
+        EventLoopGroup workerGroup = new EpollEventLoopGroup(processors * 128);
         ServerBootstrap bootstrap = new ServerBootstrap();
 
         bootstrap.group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel.class)
+                .channel(EpollServerSocketChannel.class)
                 .option(ChannelOption.SO_REUSEADDR, true)
                 .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 128)
+                .option(ChannelOption.MAX_MESSAGES_PER_WRITE, 1048576) // 1M
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
                 .childOption(ChannelOption.SO_SNDBUF, 1048576)

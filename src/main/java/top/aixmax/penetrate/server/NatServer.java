@@ -2,6 +2,9 @@ package top.aixmax.penetrate.server;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.kqueue.KQueueEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -31,8 +34,8 @@ public class NatServer {
         int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
         this.clientManager = new ClientManager(config);
-        this.bossGroup = new NioEventLoopGroup(1);
-        this.workerGroup = new NioEventLoopGroup(processors);
+        this.bossGroup = new EpollEventLoopGroup(1);
+        this.workerGroup = new EpollEventLoopGroup(processors);
     }
 
     @PostConstruct
@@ -61,10 +64,11 @@ public class NatServer {
     private void startClientServer() {
         ServerBootstrap bootstrap = new ServerBootstrap();
         bootstrap.group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel.class)
+                .channel(EpollServerSocketChannel.class)
                 .option(ChannelOption.SO_REUSEADDR, true)
                 .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 128)
+                .option(ChannelOption.MAX_MESSAGES_PER_WRITE, 1048576) // 1M
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
                 .childOption(ChannelOption.SO_SNDBUF, 1048576)

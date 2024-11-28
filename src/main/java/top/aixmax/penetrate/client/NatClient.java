@@ -43,7 +43,7 @@ public class NatClient {
     public NatClient(ClientConfig config) {
         int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
-        this.group = new NioEventLoopGroup(processors);
+        this.group = new NioEventLoopGroup(processors * 2);
         // 创建一个共享的handler实例
         this.clientHandler = new ClientHandler(new PortMappingManager(config), config.getClientId());
         // 日志输出配置信息
@@ -94,7 +94,8 @@ public class NatClient {
                             .option(ChannelOption.TCP_NODELAY, true)
                             .option(ChannelOption.SO_KEEPALIVE, true)
                             .option(ChannelOption.SO_REUSEADDR, true)
-                            .option(ChannelOption.SO_RCVBUF, 1048576)
+                            .option(ChannelOption.SO_RCVBUF, 1048576) // 1M
+                            .option(ChannelOption.MAX_MESSAGES_PER_WRITE, 1048576) // 1M
                             .handler(clientHandler);
 
                     // Connect to the server

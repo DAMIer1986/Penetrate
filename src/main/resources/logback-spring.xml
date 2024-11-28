@@ -29,5 +29,5 @@
         <appender-ref ref="FILE"/>
     </root>
 
-    <logger name="com.natproxy" level="DEBUG"/>
+    <logger name="top.aixmax" level="DEBUG"/>
 </configuration>
