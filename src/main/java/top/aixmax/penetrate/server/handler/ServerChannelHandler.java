@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
@@ -34,6 +35,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
  * @description
  */
 @Slf4j
+@ChannelHandler.Sharable
 public class ServerChannelHandler extends AbstractMessageHandler {
 
     private final ClientManager clientManager;
@@ -75,11 +77,11 @@ public class ServerChannelHandler extends AbstractMessageHandler {
                     new Thread(() -> serverManager.startExternalServer(portInfo.getRemotePort())).start();
                 }
             });
-            ctx.channel().writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createRegisterAckMessage()));
+            ctx.channel().writeAndFlush(Unpooled.wrappedBuffer(MessageFactory.createRegisterAckMessage()));
             log.info("Client registered: {}", info.getClientId());
         } else {
             log.error("Failed to register client: {}", info.getClientId());
-            ctx.channel().writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createErrorMessage("Registration failed")));
+            ctx.channel().writeAndFlush(Unpooled.wrappedBuffer(MessageFactory.createErrorMessage("Registration failed")));
             ctx.close();
         }
     }
@@ -96,7 +98,7 @@ public class ServerChannelHandler extends AbstractMessageHandler {
         ClientInfo clientInfo = clientManager.getClientByChannel(ctx.channel());
         if (clientInfo != null) {
             clientInfo.updateHeartbeat();
-            ctx.writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createHeartbeatAckMessage()));
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(MessageFactory.createHeartbeatAckMessage()));
             log.debug("Heartbeat received from client: {}", clientInfo.getClientId());
         }
     }
@@ -121,7 +123,7 @@ public class ServerChannelHandler extends AbstractMessageHandler {
             handleDataForward(ctx, msg, clientInfo);
         } catch (Exception e) {
             log.error("Error handling data forward for client: {}", clientInfo.getClientId(), e);
-            ctx.writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createErrorMessage("Data forward failed")));
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(MessageFactory.createErrorMessage("Data forward failed")));
         }
     }
 
@@ -140,11 +142,11 @@ public class ServerChannelHandler extends AbstractMessageHandler {
             // 获取目标通道
             Channel targetChannel = clientManager.getServerChannel(msg.getChannelId());
             if (targetChannel != null && targetChannel.isActive()) {
-                targetChannel.writeAndFlush(Unpooled.copiedBuffer(msg.getData()));
+                targetChannel.writeAndFlush(Unpooled.wrappedBuffer(msg.getData()));
                 log.debug("Data forwarded to Server channel Id {}, length: {}", msg.getChannelId(), msg.getData().length);
             } else {
                 log.warn("No active channel found for id: {}", msg.getChannelId());
-                ctx.writeAndFlush(Unpooled.copiedBuffer(
+                ctx.writeAndFlush(Unpooled.wrappedBuffer(
                         MessageFactory.createErrorMessage("No active channel for id: " + msg.getChannelId())));
             }
         }

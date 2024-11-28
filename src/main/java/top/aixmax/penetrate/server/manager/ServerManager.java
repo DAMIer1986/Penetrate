@@ -36,22 +36,20 @@ public class ServerManager {
      * @param externalPort 端口号
      */
     public void startExternalServer(int externalPort) {
-        EventLoopGroup bossGroup = new NioEventLoopGroup();
-        EventLoopGroup workerGroup = new NioEventLoopGroup();
+        int processors = Runtime.getRuntime().availableProcessors();
+        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+        EventLoopGroup workerGroup = new NioEventLoopGroup(processors);
         ServerBootstrap bootstrap = new ServerBootstrap();
+
         bootstrap.group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
+                .option(ChannelOption.SO_REUSEADDR, true)
+                .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 128)
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childHandler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        ChannelPipeline p = ch.pipeline();
-                        // 外部访问处理器
-                        p.addLast(new ExternalHandler(clientManager, externalPort));
-                    }
-                });
+                .childOption(ChannelOption.SO_SNDBUF, 1048576)
+                .childHandler(new ExternalHandler(clientManager, externalPort));
 
         ServerChannel sc = null;
         while (true) {

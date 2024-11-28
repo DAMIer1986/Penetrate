@@ -53,7 +53,7 @@ public class LocalChannelHandler extends SimpleChannelInboundHandler<ByteBuf> {
         serverMsg.setType(MessageType.DATA);
         serverMsg.setChannelId(serverChannelId);
         serverMsg.setData(data);
-        serverChannel.writeAndFlush(Unpooled.copiedBuffer(serverMsg.getBytes()));
+        serverChannel.writeAndFlush(Unpooled.wrappedBuffer(serverMsg.getBytes()));
     }
 
     @Override

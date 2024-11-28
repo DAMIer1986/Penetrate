@@ -46,7 +46,7 @@ public class ClientHandler extends AbstractMessageHandler {
 
         ci.setPortMappings(portMappingManager.getMappings());
 
-        ByteBuf byteBuf = Unpooled.copiedBuffer(
+        ByteBuf byteBuf = Unpooled.wrappedBuffer(
                 MessageFactory.createRegisterMessage(JSON.toJSONString(ci)));
         ctx.writeAndFlush(byteBuf);
         log.info("Sending register message with clientId: {}", clientId);
@@ -61,7 +61,7 @@ public class ClientHandler extends AbstractMessageHandler {
         new Thread(() -> {
             try {
                 while (ctx.channel().isActive()) {
-                    ByteBuf heartByte = Unpooled.copiedBuffer(MessageFactory.createHeartbeatMessage());
+                    ByteBuf heartByte = Unpooled.wrappedBuffer(MessageFactory.createHeartbeatMessage());
                     ctx.channel().writeAndFlush(heartByte);
                     Thread.sleep(ProtocolConstants.waitTime);
                 }

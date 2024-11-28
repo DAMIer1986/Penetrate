@@ -41,8 +41,9 @@ public class PortMappingManager {
     private Channel serverChannel;
 
     public PortMappingManager(ClientConfig config) {
+        int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
-        this.group = new NioEventLoopGroup();
+        this.group = new NioEventLoopGroup(processors);
         // 初始化端口映射
         initializePortMappings();
     }
@@ -97,6 +98,10 @@ public class PortMappingManager {
             Bootstrap bootstrap = new Bootstrap();
             bootstrap.group(group)
                     .channel(NioSocketChannel.class)
+                    .option(ChannelOption.TCP_NODELAY, true)
+                    .option(ChannelOption.SO_KEEPALIVE, true)
+                    .option(ChannelOption.SO_REUSEADDR, true)
+                    .option(ChannelOption.SO_RCVBUF, 1048576)
                     .handler(new LocalChannelHandler(mapping, serverChannel, this, serverChannelId));
 
             ChannelFuture future = bootstrap.connect(mapping.getLocalHost(), mapping.getLocalPort()).sync();
@@ -176,7 +181,7 @@ public class PortMappingManager {
             Channel localChannel = localConnections.get(localPort + "+" + serverChannelId);
             if (localChannel != null) {
                 if (localChannel.isActive()) {
-                    localChannel.writeAndFlush(Unpooled.copiedBuffer(msg.getData()));
+                    localChannel.writeAndFlush(Unpooled.wrappedBuffer(msg.getData()));
                     return;
                 } else {
                     localChannel.close();
@@ -184,7 +189,7 @@ public class PortMappingManager {
             }
 
             localChannel = startMapping(portMappingMap.get(msg.getExternalPort()), serverChannelId);
-            localChannel.writeAndFlush(Unpooled.copiedBuffer(msg.getData()));
+            localChannel.writeAndFlush(Unpooled.wrappedBuffer(msg.getData()));
 
             localConnections.put(localPort + "+" + serverChannelId, localChannel);
         } catch (Exception e) {

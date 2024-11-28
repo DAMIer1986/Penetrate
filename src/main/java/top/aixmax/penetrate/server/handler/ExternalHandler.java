@@ -1,6 +1,7 @@
 package top.aixmax.penetrate.server.handler;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +13,7 @@ import top.aixmax.penetrate.server.manager.ClientManager;
  * @description
  */
 @Slf4j
+@ChannelHandler.Sharable
 public class ExternalHandler extends SimpleChannelInboundHandler<ByteBuf> {
     private final ClientManager clientManager;
 

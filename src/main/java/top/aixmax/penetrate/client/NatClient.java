@@ -41,8 +41,9 @@ public class NatClient {
     private volatile boolean running = true;
 
     public NatClient(ClientConfig config) {
+        int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
-        this.group = new NioEventLoopGroup(config.getWorkerThreads());
+        this.group = new NioEventLoopGroup(processors);
         // 创建一个共享的handler实例
         this.clientHandler = new ClientHandler(new PortMappingManager(config), config.getClientId());
         // 日志输出配置信息
@@ -90,6 +91,10 @@ public class NatClient {
                     Bootstrap bootstrap = new Bootstrap();
                     bootstrap.group(group)
                             .channel(NioSocketChannel.class)
+                            .option(ChannelOption.TCP_NODELAY, true)
+                            .option(ChannelOption.SO_KEEPALIVE, true)
+                            .option(ChannelOption.SO_REUSEADDR, true)
+                            .option(ChannelOption.SO_RCVBUF, 1048576)
                             .handler(clientHandler);
 
                     // Connect to the server
@@ -102,19 +107,6 @@ public class NatClient {
                 }
             }
         }).start();
-    }
-
-    /**
-     * 重连服务器
-     */
-    public void scheduleReconnect() {
-        if (!running) {
-            return;
-        }
-        group.schedule(() -> {
-            log.info("Attempting to reconnect...");
-            connectToServer();
-        }, config.getRetryInterval(), TimeUnit.SECONDS);
     }
 
     @PreDestroy

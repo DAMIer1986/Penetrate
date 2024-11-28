@@ -26,20 +26,12 @@ nat:
     enabled: false
   client:
     enabled: true
-    server-host: 39.104.48.206
+    server-host: 127.0.0.1
     server-port: 61927
     enable-ssl: false
     port-mappings:
-      - local-port: 22
-        remote-port: 9522
-        protocol: tcp
-        enabled: true
-        max-connections: 100
-        connection-timeout: 5000
-        idle-timeout: 600
-        local-host: 127.0.0.1
-      - local-port: 8080
-        remote-port: 80
+      - local-port: 80
+        remote-port: 4321
         protocol: tcp
         enabled: true
         max-connections: 100

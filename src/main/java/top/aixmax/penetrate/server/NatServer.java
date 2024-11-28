@@ -28,10 +28,11 @@ public class NatServer {
     private Channel clientServerChannel;
 
     public NatServer(ServerConfig config) {
+        int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
         this.clientManager = new ClientManager(config);
-        this.bossGroup = new NioEventLoopGroup();
-        this.workerGroup = new NioEventLoopGroup();
+        this.bossGroup = new NioEventLoopGroup(1);
+        this.workerGroup = new NioEventLoopGroup(processors);
     }
 
     @PostConstruct
@@ -61,17 +62,13 @@ public class NatServer {
         ServerBootstrap bootstrap = new ServerBootstrap();
         bootstrap.group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
+                .option(ChannelOption.SO_REUSEADDR, true)
+                .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 128)
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childHandler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        ChannelPipeline p = ch.pipeline();
-                        // 客户端连接处理器
-                        p.addLast(new ServerChannelHandler(clientManager));
-                    }
-                });
+                .childOption(ChannelOption.SO_SNDBUF, 1048576)
+                .childHandler(new ServerChannelHandler(clientManager));
 
         while (true) {
             try {
