@@ -1,13 +1,17 @@
 package top.aixmax.penetrate.client.handler;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleStateEvent;
 import lombok.extern.slf4j.Slf4j;
 import top.aixmax.penetrate.client.config.PortMapping;
 import top.aixmax.penetrate.client.manager.PortMappingManager;
+import top.aixmax.penetrate.common.enums.MessageType;
+import top.aixmax.penetrate.core.protocol.Message;
 import top.aixmax.penetrate.core.protocol.MessageFactory;
 
 import java.nio.ByteBuffer;
@@ -18,70 +22,52 @@ import java.nio.ByteBuffer;
  * @description
  */
 @Slf4j
-public class LocalChannelHandler extends ChannelInboundHandlerAdapter {
+public class LocalChannelHandler extends SimpleChannelInboundHandler<ByteBuf> {
+
     private final PortMapping portMapping;
+
     private final Channel serverChannel;
+
     private final PortMappingManager portMappingManager;
-    private final String channelId;
+
+    private final Integer serverChannelId;
 
     public LocalChannelHandler(PortMapping portMapping,
                                Channel serverChannel,
-                               PortMappingManager portMappingManager) {
+                               PortMappingManager portMappingManager,
+                               Integer serverChannelId) {
         this.portMapping = portMapping;
         this.serverChannel = serverChannel;
         this.portMappingManager = portMappingManager;
-        this.channelId = generateChannelId();
+        this.serverChannelId = serverChannelId;
     }
 
     @Override
-    public void channelActive(ChannelHandlerContext ctx) {
-        portMappingManager.addConnection(portMapping.getLocalPort(), ctx.channel());
-        log.debug("New local connection established for port {}", portMapping.getLocalPort());
-    }
+    protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buf) {
+        byte[] data = new byte[buf.readableBytes()];
+        buf.readBytes(data);
 
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        ByteBuf buf = (ByteBuf) msg;
-        try {
-            byte[] data = new byte[buf.readableBytes()];
-            buf.readBytes(data);
-
-            // 构建数据包
-            ByteBuffer buffer = ByteBuffer.allocate(8 + data.length);
-            buffer.putInt(portMapping.getRemotePort()); // 远程端口
-            buffer.putInt(data.length);
-            buffer.put(data);
-
-            serverChannel.writeAndFlush(MessageFactory.createDataMessage(buffer.array()));
-        } finally {
-            buf.release();
-        }
+        // 构建数据包
+        Message serverMsg = new Message();
+        serverMsg.setExternalPort(portMapping.getRemotePort());
+        serverMsg.setType(MessageType.DATA);
+        serverMsg.setChannelId(serverChannelId);
+        serverMsg.setData(data);
+        serverChannel.writeAndFlush(Unpooled.copiedBuffer(serverMsg.getBytes()));
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        portMappingManager.removeConnection(portMapping.getLocalPort(), ctx.channel());
+        portMappingManager.removeConnection(portMapping.getLocalPort() + "+" + serverChannelId);
         log.debug("Local connection closed for port {}", portMapping.getLocalPort());
-    }
-
-    @Override
-    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
-        if (evt instanceof IdleStateEvent) {
-            log.debug("Channel idle timeout, closing connection for port {}",
-                    portMapping.getLocalPort());
-            ctx.close();
-        }
+        ctx.close();
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("Error in local connection for port {}",
-                portMapping.getLocalPort(), cause);
+        log.error("Error in local connection for port {}", portMapping.getLocalPort(), cause);
+        portMappingManager.removeConnection(portMapping.getLocalPort() + "+" + serverChannelId);
         ctx.close();
     }
 
-    private String generateChannelId() {
-        return String.format("%d-%d", portMapping.getLocalPort(),
-                System.nanoTime());
-    }
 }

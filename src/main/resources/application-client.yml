@@ -28,8 +28,8 @@ nat:
     server-port: 61927
     enable-ssl: false
     port-mappings:
-      - local-port: 8080
-        remote-port: 80
+      - local-port: 80
+        remote-port: 4321
         protocol: tcp
         enabled: true
         max-connections: 100

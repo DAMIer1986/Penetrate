@@ -1,6 +1,8 @@
 package top.aixmax.penetrate.client;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
@@ -12,8 +14,13 @@ import lombok.extern.slf4j.Slf4j;
 import top.aixmax.penetrate.client.config.PortMapping;
 import top.aixmax.penetrate.client.handler.ClientHandler;
 import top.aixmax.penetrate.client.manager.PortMappingManager;
+import top.aixmax.penetrate.common.constants.ProtocolConstants;
 import top.aixmax.penetrate.config.ClientConfig;
 
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -24,8 +31,6 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class NatClient {
 
-    private PortMappingManager portMappingManager;
-
     @Getter
     private final ClientConfig config;
 
@@ -33,17 +38,13 @@ public class NatClient {
 
     private final ClientHandler clientHandler;
 
-    @Getter
-    private Channel channel;
-
     private volatile boolean running = true;
 
     public NatClient(ClientConfig config) {
         this.config = config;
         this.group = new NioEventLoopGroup(config.getWorkerThreads());
-        this.portMappingManager = new PortMappingManager(config);
         // 创建一个共享的handler实例
-        this.clientHandler = new ClientHandler(portMappingManager, config.getClientId());
+        this.clientHandler = new ClientHandler(new PortMappingManager(config), config.getClientId());
         // 日志输出配置信息
         logConfiguration();
     }
@@ -58,7 +59,7 @@ public class NatClient {
         log.info("Heartbeat interval: {}s", config.getHeartbeatInterval());
         log.info("Port mappings:");
         if (config.getPortMappings() != null) {
-            config.getPortMappings().stream().filter(PortMapping::isEnabled)
+            config.getPortMappings().stream().filter(PortMapping::getEnabled)
                     .forEach(mapping -> log.info("  {} -> {}",
                             mapping.getLocalPort(), mapping.getRemotePort()));
         }
@@ -70,47 +71,9 @@ public class NatClient {
             log.info("NAT client is disabled, skipping startup");
             return;
         }
-
-        // 初始化端口映射
-        initializePortMappings();
-
         log.info("Starting NAT client...");
+        // 连接至服务器
         connectToServer();
-    }
-
-    /**
-     * 初始化本地端口
-     */
-    private void initializePortMappings() {
-        if (config.getPortMappings() == null) {
-            return;
-        }
-
-        for (PortMapping mapping : config.getPortMappings()) {
-            if (!mapping.isEnabled()) {
-                continue;
-            }
-
-            validatePortMapping(mapping);
-            portMappingManager.registerMapping(mapping);
-        }
-    }
-
-    /**
-     * 检查端口映射
-     *
-     * @param mapping 端口映射配置
-     */
-    private void validatePortMapping(PortMapping mapping) {
-        if (mapping.getLocalPort() <= 0 || mapping.getLocalPort() > 65535) {
-            throw new IllegalArgumentException("Invalid local port: " + mapping.getLocalPort());
-        }
-        if (mapping.getRemotePort() <= 0 || mapping.getRemotePort() > 65535) {
-            throw new IllegalArgumentException("Invalid remote port: " + mapping.getRemotePort());
-        }
-        if (!"tcp".equalsIgnoreCase(mapping.getProtocol()) && !"udp".equalsIgnoreCase(mapping.getProtocol())) {
-            throw new IllegalArgumentException("Invalid protocol: " + mapping.getProtocol());
-        }
     }
 
     /**
@@ -121,30 +84,24 @@ public class NatClient {
             return;
         }
 
-        Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(group)
-                .channel(NioSocketChannel.class)
-                .option(ChannelOption.TCP_NODELAY, true)
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, config.getConnectTimeout())
-                .handler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        ChannelPipeline p = ch.pipeline();
-                        // 业务处理器
-                        p.addLast(clientHandler);
-                    }
-                });
+        new Thread(() -> {
+            while (true) {
+                try {
+                    Bootstrap bootstrap = new Bootstrap();
+                    bootstrap.group(group)
+                            .channel(NioSocketChannel.class)
+                            .handler(clientHandler);
 
-        bootstrap.connect(config.getServerHost(), config.getServerPort())
-                .addListener((ChannelFutureListener) future -> {
-                    if (future.isSuccess()) {
-                        channel = future.channel();
-                        log.info("Connected to server {}:{}", config.getServerHost(), config.getServerPort());
-                    } else {
-                        log.error("Failed to connect to server: {}", future.cause().getMessage());
-                        scheduleReconnect();
-                    }
-                });
+                    // Connect to the server
+                    ChannelFuture future = bootstrap.connect(config.getServerHost(), config.getServerPort()).sync();
+                    // Wait until the connection is closed
+                    future.channel().closeFuture().sync();
+                    Thread.sleep(ProtocolConstants.waitTime);
+                } catch (Exception ex) {
+                    group.shutdownGracefully();
+                }
+            }
+        }).start();
     }
 
     /**
@@ -163,9 +120,6 @@ public class NatClient {
     @PreDestroy
     public void stop() {
         running = false;
-        if (channel != null) {
-            channel.close();
-        }
         group.shutdownGracefully();
     }
 

@@ -27,6 +27,7 @@ public abstract class AbstractMessageHandler extends SimpleChannelInboundHandler
         byte[] bytes = new byte[byteBuf.readableBytes()];
         byteBuf.readBytes(bytes);
         byte[] tempBytes = tempMapBytes.get(ctx);
+
         if (tempBytes != null) {
             byte[] temp = new byte[tempBytes.length + bytes.length];
             System.arraycopy(tempBytes, 0, temp, 0, tempBytes.length);
@@ -91,12 +92,13 @@ public abstract class AbstractMessageHandler extends SimpleChannelInboundHandler
         message.setType(type);
         message.setChannelId(ByteUtils.bytesToInt(bytes, 2));
         message.setExternalPort(ByteUtils.bytesToInt(bytes, 6));
-        message.setDataLength(dateLength);
         message.setData(data);
         try {
             switch (type) {
                 case REGISTER -> handleRegister(ctx, message);
+                case REGISTER_ACK -> handleRegisterAck(ctx, message);
                 case HEARTBEAT -> handleHeartbeat(ctx);
+                case HEARTBEAT_ACK -> handleHeartbeatAck(ctx);
                 case DATA -> handleData(ctx, message);
                 case DATA_ACK -> handleDataAck(ctx, message);
                 case ERROR -> handleError(ctx, message);

@@ -5,8 +5,10 @@ import lombok.Data;
 import top.aixmax.penetrate.client.config.PortMapping;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -49,12 +51,7 @@ public class ClientInfo {
     /**
      * 端口映射信息
      */
-    private Map<Integer, PortMapping> portMappings;
-
-    /**
-     * 外部通道ID映射
-     */
-    private Map<Integer, Channel> externalChannelIds;
+    private List<PortMapping> portMappings;
 
     /**
      * 客户端版本
@@ -83,9 +80,8 @@ public class ClientInfo {
         this.lastHeartbeatTime = LocalDateTime.now();
         this.totalRequests = new AtomicLong(0);
         this.totalBytes = new AtomicLong(0);
-        this.portMappings = new ConcurrentHashMap<>();
+        this.portMappings = new CopyOnWriteArrayList<>();
         this.attributes = new ConcurrentHashMap<>();
-        this.externalChannelIds = new ConcurrentHashMap<>();
     }
 
     /**
@@ -176,8 +172,8 @@ public class ClientInfo {
      * 获取活跃端口映射数量
      */
     public int getActivePortMappingCount() {
-        return (int) portMappings.values().stream()
-                .filter(PortMapping::isEnabled)
+        return (int) portMappings.stream()
+                .filter(PortMapping::getEnabled)
                 .count();
     }
 

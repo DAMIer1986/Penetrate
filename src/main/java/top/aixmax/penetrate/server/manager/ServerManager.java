@@ -58,7 +58,6 @@ public class ServerManager {
             try {
                 if (sc == null) {
                     sc = new ServerChannel(bossGroup, workerGroup, bootstrap.bind(externalPort).sync().channel(), externalPort);
-                    channelMap.put(externalPort, sc);
                     log.info("External server listening on port {}", externalPort);
                 } else if (!sc.channel.isActive()) {
                     sc.channel.close().sync();
@@ -67,6 +66,7 @@ public class ServerManager {
                             bootstrap.bind(externalPort).sync().channel(), externalPort);
                     log.info("External server re listening on port {}", externalPort);
                 }
+                channelMap.put(externalPort, sc);
                 // 每5秒循环一次，确保接收线程存活
                 Thread.sleep(ProtocolConstants.waitTime);
             } catch (Exception ex) {

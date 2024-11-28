@@ -1,22 +1,22 @@
 package top.aixmax.penetrate.client.manager;
 
-import io.netty.bootstrap.ServerBootstrap;
+import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import jakarta.annotation.PostConstruct;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 import top.aixmax.penetrate.client.config.PortMapping;
-import top.aixmax.penetrate.common.utils.ByteUtils;
+import top.aixmax.penetrate.client.handler.LocalChannelHandler;
 import top.aixmax.penetrate.config.ClientConfig;
+import top.aixmax.penetrate.core.protocol.Message;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
  * @author wangxu
@@ -24,31 +24,31 @@ import java.util.concurrent.ConcurrentHashMap;
  * @description
  */
 @Slf4j
-@Component
 public class PortMappingManager {
+
     private final ClientConfig config;
-    private final EventLoopGroup bossGroup;
-    private final EventLoopGroup workerGroup;
-    private final Map<Integer, Channel> localServers = new ConcurrentHashMap<>();
-    private final Map<Integer, List<Channel>> localConnections = new ConcurrentHashMap<>();
-    private Channel clientChannel;
+
+    private final EventLoopGroup group;
+
+    private final Map<String, Channel> localConnections = new ConcurrentHashMap<>();
+
+    private final Set<Integer> localPorts = new ConcurrentSkipListSet<>();
+
+    private final Set<Integer> externalPorts = new ConcurrentSkipListSet<>();
+
+    private final Map<Integer, PortMapping> portMappingMap = new ConcurrentHashMap<>();
+
+    private Channel serverChannel;
 
     public PortMappingManager(ClientConfig config) {
         this.config = config;
-        this.bossGroup = new NioEventLoopGroup(1);
-        this.workerGroup = new NioEventLoopGroup();
+        this.group = new NioEventLoopGroup();
+        // 初始化端口映射
+        initializePortMappings();
     }
 
-    @PostConstruct
-    public void init() {
-        if (!config.isEnabled()) {
-            return;
-        }
-        startAll();
-    }
-
-    public void setClientChannel(Channel clientChannel) {
-        this.clientChannel = clientChannel;
+    public void setServerChannel(Channel serverChannel) {
+        this.serverChannel = serverChannel;
     }
 
     /**
@@ -61,209 +61,132 @@ public class PortMappingManager {
     /**
      * 检查是否可以接受新的连接
      */
-    public boolean canAcceptNewConnection(int localPort) {
-        PortMapping mapping = getMapping(localPort);
-        if (mapping == null) {
-            return false;
-        }
-
-        List<Channel> connections = localConnections.get(localPort);
-        if (connections == null) {
-            return true;
-        }
-
-        // 清理已关闭的连接
-        connections.removeIf(channel -> !channel.isActive());
-
-        // 检查是否超过最大连接数
-        return connections.size() < mapping.getMaxConnections();
-    }
-
-    /**
-     * 获取指定本地端口的映射
-     */
-    public PortMapping getMapping(int localPort) {
-        return config.getPortMappings().stream()
-                .filter(mapping -> mapping.getLocalPort() == localPort)
-                .findFirst()
-                .orElse(null);
-    }
-
-    /**
-     * 获取指定端口的当前连接数
-     */
-    public int getCurrentConnections(int localPort) {
-        List<Channel> connections = localConnections.get(localPort);
-        if (connections == null) {
-            return 0;
-        }
-        // 清理已关闭的连接
-        connections.removeIf(channel -> !channel.isActive());
-        return connections.size();
+    public boolean canAcceptNewConnection(String localKey) {
+        Channel connections = localConnections.get(localKey);
+        return connections == null;
     }
 
     /**
      * 添加新的连接
      */
-    public boolean addConnection(int localPort, Channel channel) {
-        if (!canAcceptNewConnection(localPort)) {
-            return false;
+    public void addConnection(String localKey, Channel channel) {
+        if (!canAcceptNewConnection(localKey)) {
+            return;
         }
+        localConnections.put(localKey, channel);
 
-        List<Channel> connections = localConnections.computeIfAbsent(
-                localPort, k -> new ArrayList<>());
-        connections.add(channel);
-
-        log.debug("Added new connection for port {}, current connections: {}",
-                localPort, connections.size());
-        return true;
+        log.debug("Added new connection for port {}", localKey);
     }
 
     /**
      * 移除连接
      */
-    public void removeConnection(int localPort, Channel channel) {
-        List<Channel> connections = localConnections.get(localPort);
-        if (connections != null) {
-            connections.remove(channel);
-            log.debug("Removed connection for port {}, remaining connections: {}",
-                    localPort, connections.size());
+    public void removeConnection(String localKey) {
+        Channel channel = localConnections.remove(localKey);
+        if (channel != null) {
+            channel.close();
+            log.debug("Removed connection for port {}", localKey);
         }
-    }
-
-    /**
-     * 启动所有端口映射
-     */
-    public void startAll() {
-        for (PortMapping mapping : config.getPortMappings()) {
-            if (mapping.isEnabled()) {
-                startMapping(mapping);
-            }
-        }
-    }
-
-    /**
-     * 注册端口映射
-     */
-    public void registerMapping(PortMapping mapping) {
-        if (mapping == null || !mapping.isEnabled()) {
-            return;
-        }
-
-        // 检查端口是否已经被使用
-        if (localServers.containsKey(mapping.getLocalPort())) {
-            log.warn("Port {} is already mapped", mapping.getLocalPort());
-            return;
-        }
-
-        // 启动映射
-        startMapping(mapping);
-    }
-
-    /**
-     * 取消注册端口映射
-     */
-    public void unregisterMapping(int localPort) {
-        Channel serverChannel = localServers.remove(localPort);
-        if (serverChannel != null) {
-            serverChannel.close();
-        }
-
-        List<Channel> connections = localConnections.remove(localPort);
-        if (connections != null) {
-            connections.forEach(Channel::close);
-        }
-
-        log.info("Unregistered port mapping for local port: {}", localPort);
     }
 
     /**
      * 启动单个端口映射
      */
-    private void startMapping(PortMapping mapping) {
+    private Channel startMapping(PortMapping mapping,int serverChannelId) {
         try {
-            ServerBootstrap bootstrap = new ServerBootstrap();
-            bootstrap.group(bossGroup, workerGroup)
-                    .channel(NioServerSocketChannel.class)
-                    .childOption(ChannelOption.AUTO_READ, true)
-                    .childHandler(new ChannelInitializer<SocketChannel>() {
-                        @Override
-                        protected void initChannel(SocketChannel ch) {
-                            ChannelPipeline p = ch.pipeline();
-                            p.addLast(new LocalHandler(mapping));
-                        }
-                    });
+            Bootstrap bootstrap = new Bootstrap();
+            bootstrap.group(group)
+                    .channel(NioSocketChannel.class)
+                    .handler(new LocalChannelHandler(mapping, serverChannel, this, serverChannelId));
 
-            Channel serverChannel = bootstrap.bind(mapping.getLocalPort()).sync().channel();
-            localServers.put(mapping.getLocalPort(), serverChannel);
-            localConnections.putIfAbsent(mapping.getLocalPort(), new ArrayList<>());
+            ChannelFuture future = bootstrap.connect(mapping.getLocalHost(), mapping.getLocalPort()).sync();
+            Channel channel = future.channel();
 
             log.info("Started port mapping: {} -> {}",
                     mapping.getLocalPort(), mapping.getRemotePort());
+            return channel;
         } catch (Exception e) {
             log.error("Failed to start port mapping: {} -> {}",
                     mapping.getLocalPort(), mapping.getRemotePort(), e);
+            throw new RuntimeException("Failed to start port mapping " +
+                    mapping.getLocalPort() + " ->" + mapping.getRemotePort());
+        }
+    }
+
+
+    /**
+     * 初始化本地端口
+     */
+    private void initializePortMappings() {
+        if (config.getPortMappings() == null) {
+            return;
+        }
+        for (PortMapping mapping : config.getPortMappings()) {
+            if (!mapping.getEnabled()) {
+                continue;
+            }
+            validatePortMapping(mapping);
+            portMappingMap.put(mapping.getRemotePort(), mapping);
         }
     }
 
     /**
-     * 检查端口映射是否已注册
+     * 检查端口映射
+     *
+     * @param mapping 端口映射配置
      */
-    public boolean isMappingRegistered(int localPort) {
-        return localServers.containsKey(localPort);
+    private void validatePortMapping(PortMapping mapping) {
+        if (mapping.getLocalPort() <= 0 || mapping.getLocalPort() > 65535) {
+            throw new IllegalArgumentException("Invalid local port: " + mapping.getLocalPort());
+        }
+        if (mapping.getRemotePort() <= 0 || mapping.getRemotePort() > 65535) {
+            throw new IllegalArgumentException("Invalid remote port: " + mapping.getRemotePort());
+        }
+        if (!"tcp".equalsIgnoreCase(mapping.getProtocol()) && !"udp".equalsIgnoreCase(mapping.getProtocol())) {
+            throw new IllegalArgumentException("Invalid protocol: " + mapping.getProtocol());
+        }
+        if (localPorts.contains(mapping.getLocalPort()) || externalPorts.contains(mapping.getRemotePort())) {
+            throw new IllegalArgumentException("Port repeat :" + mapping.getLocalPort());
+        }
+        localPorts.add(mapping.getLocalPort());
+        externalPorts.add(mapping.getRemotePort());
     }
 
-    /**
-     * 获取已注册的端口映射数量
-     */
-    public int getRegisteredMappingCount() {
-        return localServers.size();
+    public int mappingPort(int externalPort) {
+        PortMapping mapping = portMappingMap.get(externalPort);
+        if (mapping == null) {
+            log.warn("None Register External Port {}", externalPort);
+            throw new RuntimeException("None Register External Port " + externalPort);
+        }
+        return mapping.getLocalPort();
     }
-
-    /**
-     * 获取指定端口的连接数
-     */
-    public int getConnectionCount(int localPort) {
-        List<Channel> connections = localConnections.get(localPort);
-        return connections != null ? connections.size() : 0;
-    }
-
 
 
     /**
      * 处理来自服务器的数据
      */
-    public void handleIncomingData(byte[] data) {
+    public void handleIncomingData(Message msg) {
         // 解析数据包头部，获取目标端口和数据
-        if (data.length < 8) {
-            log.warn("Invalid data packet: too short");
-            return;
-        }
-
         try {
             // 解析端口和数据
-            int localPort = ByteUtils.bytesToInt(data, 0);
-            int dataLength = ByteUtils.bytesToInt(data, 4);
-
-            if (data.length < 8 + dataLength) {
-                log.warn("Invalid data packet: incomplete data");
-                return;
-            }
-
-            byte[] payload = new byte[dataLength];
-            System.arraycopy(data, 8, payload, 0, dataLength);
+            int localPort = mappingPort(msg.getExternalPort());
+            int serverChannelId = msg.getChannelId();
 
             // 获取对应的本地连接并转发数据
-            List<Channel> channels = localConnections.get(localPort);
-            if (channels != null && !channels.isEmpty()) {
-                // 这里可以根据需要选择转发策略，当前简单地发送给第一个连接
-                Channel localChannel = channels.get(0);
+            Channel localChannel = localConnections.get(localPort + "+" + serverChannelId);
+            if (localChannel != null) {
                 if (localChannel.isActive()) {
-                    localChannel.writeAndFlush(payload);
+                    localChannel.writeAndFlush(Unpooled.copiedBuffer(msg.getData()));
+                    return;
                 } else {
-                    channels.remove(localChannel);
+                    localChannel.close();
                 }
             }
+
+            localChannel = startMapping(portMappingMap.get(msg.getExternalPort()), serverChannelId);
+            localChannel.writeAndFlush(Unpooled.copiedBuffer(msg.getData()));
+
+            localConnections.put(localPort + "+" + serverChannelId, localChannel);
         } catch (Exception e) {
             log.error("Error handling incoming data", e);
         }
@@ -274,62 +197,18 @@ public class PortMappingManager {
      */
     public void handleDisconnect() {
         // 清理所有本地连接
-        localConnections.values().forEach(channels ->
-                channels.forEach(Channel::close));
+        localConnections.values().forEach(Channel::close);
         localConnections.clear();
-
-        // 标记客户端通道为null
-        clientChannel = null;
     }
 
     @PreDestroy
     public void destroy() {
-        // 关闭所有本地服务器
-        localServers.values().forEach(Channel::close);
-        localServers.clear();
-
         // 关闭所有本地连接
-        localConnections.values().forEach(channels ->
-                channels.forEach(Channel::close));
+        localConnections.values().forEach(Channel::close);
         localConnections.clear();
 
         // 关闭线程组
-        bossGroup.shutdownGracefully();
-        workerGroup.shutdownGracefully();
-    }
-
-    /**
-     * 本地连接处理器
-     */
-    @ChannelHandler.Sharable
-    private class LocalHandler extends ChannelInboundHandlerAdapter {
-        private final PortMapping mapping;
-
-        public LocalHandler(PortMapping mapping) {
-            this.mapping = mapping;
-        }
-
-        @Override
-        public void channelActive(ChannelHandlerContext ctx) {
-            if (addConnection(mapping.getLocalPort(), ctx.channel())) {
-                log.debug("New connection accepted for port {}", mapping.getLocalPort());
-            } else {
-                log.warn("Connection rejected for port {}: max connections reached",
-                        mapping.getLocalPort());
-                ctx.close();
-            }
-        }
-
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx) {
-            removeConnection(mapping.getLocalPort(), ctx.channel());
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            log.error("Error in local connection", cause);
-            ctx.close();
-        }
+        group.shutdownGracefully();
     }
 
 }

@@ -77,6 +77,7 @@ public class NatServer {
             try {
                 if (clientServerChannel == null) {
                     clientServerChannel = bootstrap.bind(config.getClientPort()).sync().channel();
+                    log.info("Server Client Connect Port:{}", config.getClientPort());
                 } else if (!clientServerChannel.isActive()) {
                     clientServerChannel.close().sync();
                     // 启动客户端监听服务器

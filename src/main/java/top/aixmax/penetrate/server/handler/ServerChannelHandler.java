@@ -1,12 +1,18 @@
 package top.aixmax.penetrate.server.handler;
 
 import com.alibaba.fastjson.JSON;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.tomcat.util.json.JSONParser;
+import org.springframework.boot.configurationprocessor.json.JSONObject;
 import org.springframework.util.CollectionUtils;
+import top.aixmax.penetrate.client.config.PortMapping;
 import top.aixmax.penetrate.core.handler.AbstractMessageHandler;
 import top.aixmax.penetrate.core.protocol.Message;
 import top.aixmax.penetrate.core.protocol.MessageFactory;
@@ -16,6 +22,11 @@ import top.aixmax.penetrate.server.model.ClientInfo;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
  * @author wangxu
@@ -29,7 +40,9 @@ public class ServerChannelHandler extends AbstractMessageHandler {
 
     private final ServerManager serverManager;
 
-    private boolean authenticated = false;
+    private static final Set<Integer> livePort = new ConcurrentSkipListSet<>();
+
+    private final Map<ChannelHandlerContext, Boolean> authenticatedMap = new ConcurrentHashMap<>();
 
     public ServerChannelHandler(ClientManager clientManager) {
         this.clientManager = clientManager;
@@ -38,6 +51,7 @@ public class ServerChannelHandler extends AbstractMessageHandler {
 
     @Override
     protected void handleRegister(ChannelHandlerContext ctx, Message msg) {
+        boolean authenticated = authenticatedMap.computeIfAbsent(ctx, p -> false);
         if (authenticated) {
             log.warn("Duplicate register message received from {}", ctx.channel().remoteAddress());
             return;
@@ -45,7 +59,7 @@ public class ServerChannelHandler extends AbstractMessageHandler {
 
         String json = new String(msg.getData(), StandardCharsets.UTF_8);
         ClientInfo info = JSON.parseObject(json, ClientInfo.class);
-
+        info.setChannel(ctx.channel());
         if (CollectionUtils.isEmpty(info.getPortMappings())) {
             log.warn("Client {} no port mapping", info.getClientId());
             return;
@@ -53,22 +67,26 @@ public class ServerChannelHandler extends AbstractMessageHandler {
 
         // 注册客户端
         if (clientManager.registerClient(info, ctx.channel())) {
-            authenticated = true;
+            authenticatedMap.put(ctx, true);
 
-            info.getPortMappings().forEach((port, portInfo) ->
-                    new Thread(() -> serverManager.startExternalServer(portInfo.getRemotePort())).start());
-
-            ctx.writeAndFlush(MessageFactory.createRegisterAckMessage());
+            info.getPortMappings().forEach((portInfo) -> {
+                if (!livePort.contains(portInfo.getRemotePort())) {
+                    livePort.add(portInfo.getRemotePort());
+                    new Thread(() -> serverManager.startExternalServer(portInfo.getRemotePort())).start();
+                }
+            });
+            ctx.channel().writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createRegisterAckMessage()));
             log.info("Client registered: {}", info.getClientId());
         } else {
             log.error("Failed to register client: {}", info.getClientId());
-            ctx.writeAndFlush(MessageFactory.createErrorMessage("Registration failed"));
+            ctx.channel().writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createErrorMessage("Registration failed")));
             ctx.close();
         }
     }
 
     @Override
     protected void handleHeartbeat(ChannelHandlerContext ctx) {
+        boolean authenticated = authenticatedMap.computeIfAbsent(ctx, p -> false);
         if (!authenticated) {
             log.warn("Received heartbeat from unauthenticated client");
             ctx.close();
@@ -78,13 +96,14 @@ public class ServerChannelHandler extends AbstractMessageHandler {
         ClientInfo clientInfo = clientManager.getClientByChannel(ctx.channel());
         if (clientInfo != null) {
             clientInfo.updateHeartbeat();
-            ctx.writeAndFlush(MessageFactory.createHeartbeatAckMessage());
+            ctx.writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createHeartbeatAckMessage()));
             log.debug("Heartbeat received from client: {}", clientInfo.getClientId());
         }
     }
 
     @Override
     protected void handleData(ChannelHandlerContext ctx, Message msg) {
+        boolean authenticated = authenticatedMap.computeIfAbsent(ctx, p -> false);
         if (!authenticated) {
             log.warn("Received data from unauthenticated client");
             ctx.close();
@@ -102,7 +121,7 @@ public class ServerChannelHandler extends AbstractMessageHandler {
             handleDataForward(ctx, msg, clientInfo);
         } catch (Exception e) {
             log.error("Error handling data forward for client: {}", clientInfo.getClientId(), e);
-            ctx.writeAndFlush(MessageFactory.createErrorMessage("Data forward failed"));
+            ctx.writeAndFlush(Unpooled.copiedBuffer(MessageFactory.createErrorMessage("Data forward failed")));
         }
     }
 
@@ -114,47 +133,38 @@ public class ServerChannelHandler extends AbstractMessageHandler {
      * @param clientInfo 客户端信息
      */
     private void handleDataForward(ChannelHandlerContext ctx, Message msg, ClientInfo clientInfo) {
-        ByteBuffer buffer = ByteBuffer.wrap(msg.getData());
-        int externalChannelId = msg.getChannelId();
-        int dataLength = buffer.getInt();
-        byte[] data = new byte[dataLength];
-        buffer.get(data);
-
         // 更新统计信息
         clientInfo.incrementRequests();
-        clientInfo.addBytes(dataLength);
-
-        // 获取目标通道
-        Channel targetChannel = clientManager.getServerChannel(externalChannelId);
-        if (targetChannel != null && targetChannel.isActive()) {
-            targetChannel.writeAndFlush(data);
-            log.debug("Data forwarded to Server channel Id {}, length: {}", externalChannelId, dataLength);
-        } else {
-            log.warn("No active channel found for id: {}", externalChannelId);
-            ctx.writeAndFlush(MessageFactory.createErrorMessage(
-                    "No active channel for id: " + externalChannelId));
+        if (msg.getData() != null) {
+            clientInfo.addBytes(msg.getData().length);
+            // 获取目标通道
+            Channel targetChannel = clientManager.getServerChannel(msg.getChannelId());
+            if (targetChannel != null && targetChannel.isActive()) {
+                targetChannel.writeAndFlush(Unpooled.copiedBuffer(msg.getData()));
+                log.debug("Data forwarded to Server channel Id {}, length: {}", msg.getChannelId(), msg.getData().length);
+            } else {
+                log.warn("No active channel found for id: {}", msg.getChannelId());
+                ctx.writeAndFlush(Unpooled.copiedBuffer(
+                        MessageFactory.createErrorMessage("No active channel for id: " + msg.getChannelId())));
+            }
         }
     }
 
     @Override
-    public void channelInactive(ChannelHandlerContext ctx) {
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        boolean authenticated = authenticatedMap.computeIfAbsent(ctx, p -> false);
         if (authenticated) {
-            clientManager.unregisterClient(ctx.channel());
-        }
-        ctx.fireChannelInactive();
-    }
-
-    @Override
-    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
-        if (evt instanceof IdleStateEvent event) {
-            if (event.state() == IdleState.READER_IDLE) {
-                log.warn("Channel idle timeout, closing connection");
-                ctx.close();
+            ClientInfo info = clientManager.unregisterClient(ctx.channel());
+            if (info != null && !CollectionUtils.isEmpty(info.getPortMappings())) {
+                info.getPortMappings().forEach(portMapping -> {
+                    // 可以增加，如果所有客户端都不存在则删除当前监听
+                });
             }
         } else {
-            ctx.fireUserEventTriggered(evt);
+            ctx.close();
         }
     }
+
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {

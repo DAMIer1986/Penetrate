@@ -18,8 +18,7 @@ public class Message {
     private MessageType type;
     private int channelId = 0;  // 外部连接的管道ID
     private int externalPort = 0; // 外部连接端口号，传递给客户端用于映射
-    private int dataLength = 0; // 数据长度
-    private byte[] data;
+    private byte[] data = new byte[0];
     private byte end = ProtocolConstants.end;
 
     public static Message create() {
@@ -48,13 +47,15 @@ public class Message {
         res[8] = portByte[2];
         res[9] = portByte[3];
 
-        byte[] dataLengthByte = ByteUtils.intToByteArray(dataLength);
-        res[6] = dataLengthByte[0];
-        res[7] = dataLengthByte[1];
-        res[8] = dataLengthByte[2];
-        res[9] = dataLengthByte[3];
+        if (data.length != 0) {
+            byte[] dataLengthByte = ByteUtils.intToByteArray(data.length);
+            res[10] = dataLengthByte[0];
+            res[11] = dataLengthByte[1];
+            res[12] = dataLengthByte[2];
+            res[13] = dataLengthByte[3];
+        }
 
-        System.arraycopy(res, 10, data, 0, this.data.length);
+        System.arraycopy(data, 0, res, 14, this.data.length);
 
         res[res.length - 1] = ProtocolConstants.end;
         return res;
