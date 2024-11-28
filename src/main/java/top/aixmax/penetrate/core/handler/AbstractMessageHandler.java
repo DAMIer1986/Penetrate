@@ -60,21 +60,66 @@ public abstract class AbstractMessageHandler extends SimpleChannelInboundHandler
         }
 
         int dateLength = ByteUtils.bytesToInt(bytes, 10);
-        if (dateLength + ProtocolConstants.minLength == bytes.length) {
-            tempMapBytes.remove(ctx);
-        } else if (dateLength + ProtocolConstants.minLength < bytes.length) {
-            byte[] temp = new byte[dateLength + ProtocolConstants.minLength];
-            tempBytes = new byte[temp.length - dateLength - ProtocolConstants.minLength];
-            tempMapBytes.put(ctx, tempBytes);
-            System.arraycopy(bytes, 0, temp, 0, dateLength + ProtocolConstants.minLength);
-            System.arraycopy(bytes, dateLength + ProtocolConstants.minLength, tempBytes, 0,
-                    bytes.length - dateLength - ProtocolConstants.minLength);
-            bytes = temp;
-        } else {
-            tempMapBytes.put(ctx, bytes);
-            return;
-        }
+        do {
+            if (dateLength + ProtocolConstants.minLength == bytes.length) {
+                tempMapBytes.remove(ctx);
+                pushBytes(bytes, ctx);
+                return;
+            } else if (dateLength + ProtocolConstants.minLength > bytes.length) {
+                tempMapBytes.put(ctx, bytes);
+                return;
+            }
 
+            byte[] temp = new byte[dateLength + ProtocolConstants.minLength];
+            tempBytes = new byte[bytes.length - dateLength - ProtocolConstants.minLength];
+
+            System.arraycopy(bytes, 0, temp, 0, dateLength + ProtocolConstants.minLength);
+            System.arraycopy(bytes, dateLength + ProtocolConstants.minLength,
+                    tempBytes, 0, tempBytes.length);
+
+            pushBytes(temp, ctx);
+
+            if (tempBytes.length >= ProtocolConstants.minLength) {
+                dateLength = ByteUtils.bytesToInt(tempBytes, 10);
+            }
+            bytes = tempBytes;
+        } while (true);
+    }
+
+    protected void handleRegister(ChannelHandlerContext ctx, Message msg) {
+    }
+
+    protected void handleRegisterAck(ChannelHandlerContext ctx, Message msg) {
+    }
+
+    protected void handleHeartbeat(ChannelHandlerContext ctx) {
+    }
+
+    protected void handleHeartbeatAck(ChannelHandlerContext ctx) {
+    }
+
+    protected void handleData(ChannelHandlerContext ctx, Message msg) {
+    }
+
+    protected void handleDataAck(ChannelHandlerContext ctx, Message msg) {
+    }
+
+    protected void handleError(ChannelHandlerContext ctx, Message msg) {
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        log.error("Channel exception caught", cause);
+        ctx.close();
+    }
+
+    /**
+     * 发送数据
+     *
+     * @param bytes 数据包
+     * @param ctx   管道
+     */
+    private void pushBytes(byte[] bytes, ChannelHandlerContext ctx) {
         if (bytes[bytes.length - 1] != ProtocolConstants.end) {
             log.warn("Package is not complete! {}", bytes);
             return;
@@ -108,32 +153,5 @@ public abstract class AbstractMessageHandler extends SimpleChannelInboundHandler
             log.error("Error handling message: {}", type, e);
             ctx.fireExceptionCaught(e);
         }
-    }
-
-    protected void handleRegister(ChannelHandlerContext ctx, Message msg) {
-    }
-
-    protected void handleRegisterAck(ChannelHandlerContext ctx, Message msg) {
-    }
-
-    protected void handleHeartbeat(ChannelHandlerContext ctx) {
-    }
-
-    protected void handleHeartbeatAck(ChannelHandlerContext ctx) {
-    }
-
-    protected void handleData(ChannelHandlerContext ctx, Message msg) {
-    }
-
-    protected void handleDataAck(ChannelHandlerContext ctx, Message msg) {
-    }
-
-    protected void handleError(ChannelHandlerContext ctx, Message msg) {
-    }
-
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        log.error("Channel exception caught", cause);
-        ctx.close();
     }
 }
