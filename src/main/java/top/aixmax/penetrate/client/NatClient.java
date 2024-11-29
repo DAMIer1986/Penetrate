@@ -95,7 +95,7 @@ public class NatClient {
                             .option(ChannelOption.SO_KEEPALIVE, true)
                             .option(ChannelOption.SO_REUSEADDR, true)
                             .option(ChannelOption.SO_RCVBUF, 1048576) // 1M
-                            .option(ChannelOption.MAX_MESSAGES_PER_WRITE, 1048576) // 1M
+                            .option(ChannelOption.SO_SNDBUF, 1048576)
                             .handler(clientHandler);
 
                     // Connect to the server

@@ -47,8 +47,7 @@ public class ServerManager {
                 .channel(EpollServerSocketChannel.class)
                 .option(ChannelOption.SO_REUSEADDR, true)
                 .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
-                .option(ChannelOption.SO_BACKLOG, 128)
-                .option(ChannelOption.MAX_MESSAGES_PER_WRITE, 1048576) // 1M
+                .option(ChannelOption.SO_BACKLOG, 256)
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
                 .childOption(ChannelOption.SO_SNDBUF, 1048576)
