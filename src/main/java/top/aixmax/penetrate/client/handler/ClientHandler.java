@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
 import top.aixmax.penetrate.client.manager.PortMappingManager;
 import top.aixmax.penetrate.common.constants.ProtocolConstants;
+import top.aixmax.penetrate.config.ClientConfig;
 import top.aixmax.penetrate.core.handler.AbstractMessageHandler;
 import top.aixmax.penetrate.core.protocol.Message;
 import top.aixmax.penetrate.core.protocol.MessageFactory;
@@ -26,20 +27,21 @@ public class ClientHandler extends AbstractMessageHandler {
 
     private final PortMappingManager portMappingManager;
 
-    private final String clientId;
+    private final ClientConfig config;
 
     private boolean authenticated = false;
 
-    public ClientHandler(PortMappingManager portMappingManager, String clientId) {
+    public ClientHandler(PortMappingManager portMappingManager, ClientConfig config) {
         this.portMappingManager = portMappingManager;
-        this.clientId = clientId;
+        this.config = config;
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         super.channelActive(ctx);
         // 发送注册消息
-        ClientInfo ci = new ClientInfo(clientId, null);
+        ClientInfo ci = new ClientInfo(config.getClientId(), null);
+        ci.setSort(config.getSort());
         if (CollectionUtils.isEmpty(portMappingManager.getMappings())) {
             throw new RuntimeException("Client No Mapping!");
         }
@@ -49,7 +51,7 @@ public class ClientHandler extends AbstractMessageHandler {
         ByteBuf byteBuf = Unpooled.wrappedBuffer(
                 MessageFactory.createRegisterMessage(JSON.toJSONString(ci)));
         ctx.writeAndFlush(byteBuf);
-        log.info("Sending register message with clientId: {}", clientId);
+        log.info("Sending register message with clientId: {}", config.getClientId());
     }
 
     @Override

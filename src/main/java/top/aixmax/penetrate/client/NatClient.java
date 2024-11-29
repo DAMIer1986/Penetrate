@@ -45,7 +45,7 @@ public class NatClient {
         this.config = config;
         this.group = new NioEventLoopGroup(processors * 2);
         // 创建一个共享的handler实例
-        this.clientHandler = new ClientHandler(new PortMappingManager(config), config.getClientId());
+        this.clientHandler = new ClientHandler(new PortMappingManager(config), config);
         // 日志输出配置信息
         logConfiguration();
     }

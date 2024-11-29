@@ -27,6 +27,7 @@ public class ClientConfig {
     private int connectTimeout = 5000;
     private int workerThreads = 4;
     private boolean enableSsl = false;
+    private int sort = 100;
     private String clientId;
     private String secretKey;
 
