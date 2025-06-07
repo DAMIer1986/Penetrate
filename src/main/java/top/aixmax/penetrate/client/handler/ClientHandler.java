@@ -87,16 +87,6 @@ public class ClientHandler extends AbstractMessageHandler {
         }
 
         try {
-            // 检查是否是连接断开通知（数据长度为0）
-            if (msg.getData() != null && msg.getData().length == 0) {
-                // 处理连接断开通知
-                String localKey = portMappingManager.mappingPort(msg.getExternalPort()) + "+" + msg.getChannelId();
-                portMappingManager.removeConnection(localKey);
-                log.info("Received disconnect notification for port {} with channel ID {}", 
-                    msg.getExternalPort(), msg.getChannelId());
-                return;
-            }
-
             // 转发数据到本地端口
             portMappingManager.handleIncomingData(msg);
         } catch (Exception e) {
