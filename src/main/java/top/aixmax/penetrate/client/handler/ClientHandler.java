@@ -108,4 +108,19 @@ public class ClientHandler extends AbstractMessageHandler {
         log.error("Channel exception", cause);
         ctx.close();
     }
+
+    @Override
+    public void handleConnect(ChannelHandlerContext ctx, Message msg) {
+        if (!authenticated) {
+            log.warn("Received data before authentication");
+            return;
+        }
+
+        try {
+            // 注册连接
+            portMappingManager.handleConnect(msg);
+        } catch (Exception e) {
+            log.error("Error handling incoming data", e);
+        }
+    }
 }

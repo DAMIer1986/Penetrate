@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import lombok.extern.slf4j.Slf4j;
+import top.aixmax.penetrate.common.enums.MessageType;
 import top.aixmax.penetrate.server.manager.ClientManager;
 
 /**
@@ -28,13 +29,16 @@ public class ExternalHandler extends SimpleChannelInboundHandler<ByteBuf> {
     public void channelActive(ChannelHandlerContext ctx) {
         // 处理新的外部连接
         log.debug("New external connection from: {}", ctx.channel().remoteAddress());
+
+        // 给客户端发送连接消息
+        clientManager.handleExternalData(ctx.channel(), null, MessageType.CONNECT, port);
     }
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) {
         // 处理外部请求数据
         // 将数据转发给对应的客户端
-        clientManager.handleExternalData(ctx.channel(), msg, port);
+        clientManager.handleExternalData(ctx.channel(), msg, MessageType.DATA, port);
     }
 
     @Override

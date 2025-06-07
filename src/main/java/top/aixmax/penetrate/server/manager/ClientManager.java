@@ -59,7 +59,7 @@ public class ClientManager {
     /**
      * 处理外部请求数据
      */
-    public void handleExternalData(Channel externalChannel, ByteBuf data, int port) {
+    public void handleExternalData(Channel externalChannel, ByteBuf data, MessageType type, int port) {
         String channelId = externalChannel.id().asLongText();
         int tempId = -1;
         if (!idMap.containsValue(channelId)) {
@@ -97,24 +97,29 @@ public class ClientManager {
             return;
         }
 
-        // 构建数据包
-        byte[] payload = new byte[data.readableBytes()];
-        data.readBytes(payload);
+
 
         // 数据包格式：
         Message msg = new Message();
-        msg.setType(MessageType.DATA);
+        msg.setType(type);
         msg.setExternalPort(port);
         msg.setChannelId(tempId);
-        msg.setData(payload);
+
+        if (data != null) {
+            // 构建数据包
+            byte[] payload = new byte[data.readableBytes()];
+            data.readBytes(payload);
+            msg.setData(payload);
+        } else {
+            msg.setData(new byte[0]);
+        }
 
         // 发送数据到客户端
         clientInfo.getChannel().writeAndFlush(
                 Unpooled.wrappedBuffer(msg.getBytes())
         );
 
-        log.debug("Forwarded {} bytes to client {} for port {}",
-                payload.length, clientInfo.getClientId(), port);
+        log.debug("Forwarded to client {} for port {}", clientInfo.getClientId(), port);
     }
 
     /**
