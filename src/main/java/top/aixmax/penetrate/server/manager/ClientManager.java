@@ -152,7 +152,11 @@ public class ClientManager {
      * @return 外部服务管道
      */
     public Channel getServerChannel(Integer channelIntId) {
-        return serverChannelMap.get(idMap.get(channelIntId));
+        String id = idMap.get(channelIntId);
+        if (id == null) {
+            return null;
+        }
+        return serverChannelMap.get(id);
     }
 
     // 内部类：端口映射信息
