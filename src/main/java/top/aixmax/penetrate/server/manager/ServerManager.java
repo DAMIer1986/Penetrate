@@ -13,22 +13,34 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
+ * 服务器管理器
+ * 负责管理外部服务器的启动和运行，处理外部连接请求
+ *
  * @author wangxu
  * @version 1.0 2024/11/26 10:32
- * @description
  */
 @Slf4j
 public class ServerManager {
 
+    /** 客户端管理器，用于管理客户端连接 */
     private final ClientManager clientManager;
 
+    /** 外部服务器通道映射表，key为端口号，value为对应的Channel */
     private final Map<Integer, Channel> channelMap;
 
+    /** Netty事件循环组，用于处理连接请求 */
     private final EventLoopGroup bossGroup;
 
+    /** Netty事件循环组，用于处理IO操作 */
     private final EventLoopGroup workerGroup;
+
+    /** Netty服务器启动器 */
     private final ServerBootstrap bootstrap;
 
+    /**
+     * 构造函数
+     * @param clientManager 客户端管理器
+     */
     public ServerManager(ClientManager clientManager) {
         this.clientManager = clientManager;
         this.channelMap = new ConcurrentHashMap<>();
@@ -39,8 +51,8 @@ public class ServerManager {
 
     /**
      * 启动外部端口监听
-     *
-     * @param externalPort 端口号
+     * 在指定端口启动服务器，处理外部连接请求
+     * @param externalPort 外部服务端口
      */
     public void startExternalServer(int externalPort) {
         bootstrap.group(bossGroup, workerGroup)
@@ -56,20 +68,24 @@ public class ServerManager {
         Channel sc = null;
         while (true) {
             try {
-                if (sc == null) {
+                if (sc == null || !sc.isActive()) {
+                    if (sc != null) {
+                        sc.close().sync();
+                    }
                     sc = bootstrap.bind(externalPort).sync().channel();
+                    channelMap.put(externalPort, sc);
                     log.info("External server listening on port {}", externalPort);
-                } else if (!sc.isActive()) {
-                    sc.close().sync();
-                    // 启动客户端监听服务器
-                    sc = bootstrap.bind(externalPort).sync().channel();
-                    log.info("External server re listening on port {}", externalPort);
                 }
-                channelMap.put(externalPort, sc);
                 // 每5秒循环一次，确保接收线程存活
                 Thread.sleep(ProtocolConstants.waitTime);
             } catch (Exception ex) {
-                log.error("Failed to start NAT server", ex);
+                log.error("Failed to start external server on port {}", externalPort, ex);
+                try {
+                    Thread.sleep(ProtocolConstants.waitTime);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         }
     }

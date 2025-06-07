@@ -26,38 +26,53 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
+ * 客户端管理器
+ * 负责管理客户端连接、端口映射和数据转发
+ *
  * @author wangxu
  * @version 1.0 2024/11/16 20:40
- * @description
  */
 @Slf4j
 public class ClientManager {
 
+    /** 服务器配置信息 */
     private final ServerConfig config;
 
-    // 客户端ID与客户端映射
+    /** 客户端ID与客户端信息映射表 */
     private final Map<String, ClientInfo> clients = new ConcurrentHashMap<>();
 
-    // 远程端口 -> 客户端信息
+    /** 远程端口到客户端信息列表的映射表 */
     private final Map<Integer, List<ClientInfo>> portClientMappings = new ConcurrentHashMap<>();
-    // 外部Channel ID -> 端口映射信息
+
+    /** 外部通道ID到端口映射信息的映射表 */
     private final Map<String, PortMappingInfo> externalChannels = new ConcurrentHashMap<>();
 
+    /** 通道到客户端信息的映射表 */
     private final Map<Channel, ClientInfo> channelMap = new ConcurrentHashMap<>();
 
-    // 服务端外网管道映射
+    /** 服务端外网通道映射表 */
     private final Map<String, Channel> serverChannelMap = new ConcurrentHashMap<>();
 
+    /** 通道ID映射表 */
+    private final Map<Integer, String> idMap = new ConcurrentHashMap<>();
+
+    /** 通道ID生成器 */
+    private final AtomicInteger channelIntId = new AtomicInteger(1000);
+
+    /**
+     * 构造函数
+     * @param config 服务器配置
+     */
     public ClientManager(ServerConfig config) {
         this.config = config;
     }
 
-    private final Map<Integer, String> idMap = new ConcurrentHashMap<>();
-
-    private final AtomicInteger channelIntId = new AtomicInteger(1000);
-
     /**
      * 处理外部请求数据
+     * 将外部客户端的数据转发给内部客户端
+     * @param externalChannel 外部通道
+     * @param data 数据
+     * @param port 端口号
      */
     public void handleExternalData(Channel externalChannel, ByteBuf data, int port) {
         String channelId = externalChannel.id().asLongText();
@@ -66,20 +81,23 @@ public class ClientManager {
             tempId = this.channelIntId.addAndGet(1);
             idMap.put(tempId, channelId);
             serverChannelMap.put(channelId, externalChannel);
+            log.debug("Created new channel mapping: {} -> {}", tempId, channelId);
         } else {
             for (Map.Entry<Integer, String> entry : idMap.entrySet()) {
                 if (channelId.equals(entry.getValue())) {
                     tempId = entry.getKey();
+                    break;
                 }
             }
         }
         if (tempId == -1) {
+            log.error("Failed to get channel ID for external channel");
             return;
         }
-        List<ClientInfo> clientInfos = portClientMappings.get(port);
 
+        List<ClientInfo> clientInfos = portClientMappings.get(port);
         if (CollectionUtils.isEmpty(clientInfos)) {
-            log.warn("No Client is active");
+            log.warn("No active client for port {}", port);
             externalChannel.close();
             return;
         }
@@ -93,7 +111,7 @@ public class ClientManager {
         }
 
         if (clientInfo == null) {
-            log.warn("Non Client Active");
+            log.warn("No active client found for port {}", port);
             return;
         }
 
@@ -113,67 +131,92 @@ public class ClientManager {
                 Unpooled.wrappedBuffer(msg.getBytes())
         );
 
-        log.debug("Forwarded {} bytes to client {} for port {}",
-                payload.length, clientInfo.getClientId(), port);
+        log.debug("Forwarded {} bytes to client {} for port {} with channel ID {}",
+                payload.length, clientInfo.getClientId(), port, tempId);
     }
 
     /**
      * 处理外部连接断开
+     * 通知内部客户端关闭对应的连接
+     * @param externalChannel 外部通道
      */
     public void handleExternalDisconnect(Channel externalChannel) {
         String channelId = externalChannel.id().asLongText();
-        PortMappingInfo mappingInfo = externalChannels.remove(channelId);
+        Integer tempId = null;
+        
+        // 查找对应的临时ID
+        for (Map.Entry<Integer, String> entry : idMap.entrySet()) {
+            if (channelId.equals(entry.getValue())) {
+                tempId = entry.getKey();
+                break;
+            }
+        }
 
-        if (mappingInfo != null) {
-            List<ClientInfo> clientInfos = portClientMappings.get(mappingInfo.getRemotePort());
-            if (!CollectionUtils.isEmpty(clientInfos)) {
-                for (ClientInfo clientInfo : clientInfos) {
-                    if (clientInfo != null && clientInfo.isActive()) {
-                        // 发送连接断开通知到客户端
-                        ByteBuffer buffer = ByteBuffer.allocate(16);
-                        buffer.putInt(mappingInfo.getRemotePort());
-                        buffer.putLong(Long.parseLong(channelId));
-                        buffer.putInt(0); // 数据长度为0表示断开连接
+        if (tempId != null) {
+            // 查找对应的端口映射信息
+            for (Map.Entry<Integer, List<ClientInfo>> entry : portClientMappings.entrySet()) {
+                int port = entry.getKey();
+                List<ClientInfo> clientInfos = entry.getValue();
+                
+                if (!CollectionUtils.isEmpty(clientInfos)) {
+                    for (ClientInfo clientInfo : clientInfos) {
+                        if (clientInfo != null && clientInfo.isActive()) {
+                            // 发送连接断开通知到客户端
+                            Message msg = new Message();
+                            msg.setType(MessageType.DATA);
+                            msg.setExternalPort(port);
+                            msg.setChannelId(tempId);
+                            msg.setData(new byte[0]); // 空数据表示断开连接
 
-                        clientInfo.getChannel().writeAndFlush(
-                                Unpooled.wrappedBuffer(buffer.array())
-                        );
+                            clientInfo.getChannel().writeAndFlush(
+                                    Unpooled.wrappedBuffer(msg.getBytes())
+                            );
 
-                        log.debug("Notified client {} about disconnection for port {}",
-                                clientInfo.getClientId(), mappingInfo.getRemotePort());
+                            log.info("Notified client {} about disconnection for port {} with channel ID {}",
+                                    clientInfo.getClientId(), port, tempId);
+                        }
                     }
                 }
             }
+
+            // 清理映射
+            idMap.remove(tempId);
+            serverChannelMap.remove(channelId);
         }
     }
 
     /**
-     * 获取外部服务管道
-     *
-     * @param channelIntId 管道ID
-     * @return 外部服务管道
+     * 获取外部服务通道
+     * @param channelIntId 通道ID
+     * @return 外部服务通道
      */
     public Channel getServerChannel(Integer channelIntId) {
         return serverChannelMap.get(idMap.get(channelIntId));
     }
 
-    // 内部类：端口映射信息
+    /**
+     * 端口映射信息内部类
+     */
     @Data
     private static class PortMappingInfo {
+        /** 远程端口 */
         private final int remotePort;
+        /** 创建时间 */
         private final long createTime;
 
+        /**
+         * 构造函数
+         * @param remotePort 远程端口
+         */
         public PortMappingInfo(int remotePort) {
             this.remotePort = remotePort;
             this.createTime = System.currentTimeMillis();
         }
-
     }
 
     /**
      * 注册客户端
-     *
-     * @param info    客户端信息
+     * @param info 客户端信息
      * @param channel 通道
      * @return 是否注册成功
      */
@@ -203,8 +246,8 @@ public class ClientManager {
 
     /**
      * 注销客户端
-     *
      * @param channel 通道
+     * @return 被注销的客户端信息
      */
     public ClientInfo unregisterClient(Channel channel) {
         ClientInfo info = channelMap.remove(channel);
@@ -216,10 +259,8 @@ public class ClientManager {
         return info;
     }
 
-
     /**
      * 通过通道获取客户端信息
-     *
      * @param channel 通道
      * @return 客户端信息
      */
