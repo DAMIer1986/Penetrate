@@ -7,8 +7,10 @@ import top.aixmax.penetrate.client.config.PortMapping;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -139,6 +141,7 @@ public class ClientInfo {
     public void removeAttribute(String key) {
         attributes.remove(key);
     }
+
 
     /**
      * 获取连接时长（秒）

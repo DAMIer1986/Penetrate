@@ -44,6 +44,8 @@ public class ServerManager {
      */
     private final EventLoopGroup workerGroup;
 
+    private final String osName = System.getProperties().getProperty("os.name").toLowerCase();
+
     /**
      * 构造函数
      *
@@ -52,10 +54,13 @@ public class ServerManager {
     public ServerManager(ClientManager clientManager) {
         this.clientManager = clientManager;
         this.channelMap = new ConcurrentHashMap<>();
-        this.bossGroup = new EpollEventLoopGroup(1);
-        this.workerGroup = new EpollEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
-//        this.bossGroup = new NioEventLoopGroup(1);
-//        this.workerGroup = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
+        if (osName.toLowerCase().contains("linux")) {
+            this.bossGroup = new EpollEventLoopGroup(1);
+            this.workerGroup = new EpollEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
+        } else {
+            this.bossGroup = new NioEventLoopGroup(1);
+            this.workerGroup = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
+        }
     }
 
     /**
@@ -66,10 +71,14 @@ public class ServerManager {
      */
     public void startExternalServer(int externalPort) {
         ServerBootstrap serverBootstrap = new ServerBootstrap();
-        serverBootstrap.group(bossGroup, workerGroup)
-                .channel(EpollServerSocketChannel.class)
-//                .channel(NioServerSocketChannel.class)
-                .option(ChannelOption.SO_REUSEADDR, true)
+        serverBootstrap.group(bossGroup, workerGroup);
+        if (osName.toLowerCase().contains("linux")) {
+            serverBootstrap.channel(EpollServerSocketChannel.class);
+        } else {
+            serverBootstrap.channel(NioServerSocketChannel.class);
+        }
+
+        serverBootstrap.option(ChannelOption.SO_REUSEADDR, true)
                 .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 256)
                 .childOption(ChannelOption.TCP_NODELAY, true)

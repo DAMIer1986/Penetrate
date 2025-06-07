@@ -64,10 +64,12 @@ public class MessageFactory {
                 .getBytes();
     }
 
-    public static byte[] createDisconnectMessage(String errorMessage) {
+    public static byte[] createDisconnectMessage(int port, int channelId) {
         return Message.create()
                 .setType(MessageType.DISCONNECT)
-                .setData(errorMessage.getBytes(StandardCharsets.UTF_8))
+                .setExternalPort(port)
+                .setData(new byte[0])
+                .setChannelId(channelId)
                 .getBytes();
     }
 

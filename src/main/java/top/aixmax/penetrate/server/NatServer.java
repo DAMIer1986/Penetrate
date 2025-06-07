@@ -28,15 +28,19 @@ public class NatServer {
     private final EventLoopGroup bossGroup;
     private final EventLoopGroup workerGroup;
     private Channel clientServerChannel;
+    private final String osName =  System.getProperties().getProperty("os.name").toLowerCase();
 
     public NatServer(ServerConfig config) {
         int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
         this.clientManager = new ClientManager(config);
-        this.bossGroup = new EpollEventLoopGroup(1);
-        this.workerGroup = new EpollEventLoopGroup(processors);
-//        this.bossGroup = new NioEventLoopGroup(1);
-//        this.workerGroup = new NioEventLoopGroup(processors);
+        if (osName.toLowerCase().contains("linux")) {
+            this.bossGroup = new EpollEventLoopGroup(1);
+            this.workerGroup = new EpollEventLoopGroup(processors);
+        } else {
+            this.bossGroup = new NioEventLoopGroup(1);
+            this.workerGroup = new NioEventLoopGroup(processors);
+        }
     }
 
     @PostConstruct
@@ -64,10 +68,13 @@ public class NatServer {
      */
     private void startClientServer() {
         ServerBootstrap bootstrap = new ServerBootstrap();
-        bootstrap.group(bossGroup, workerGroup)
-                .channel(EpollServerSocketChannel.class)
-//                .channel(NioServerSocketChannel.class)
-                .option(ChannelOption.SO_REUSEADDR, true)
+        bootstrap.group(bossGroup, workerGroup);
+        if (osName.toLowerCase().contains("linux")) {
+            bootstrap.channel(EpollServerSocketChannel.class);
+        } else {
+            bootstrap.channel(NioServerSocketChannel.class);
+        }
+        bootstrap.option(ChannelOption.SO_REUSEADDR, true)
                 .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 128)
                 .option(ChannelOption.MAX_MESSAGES_PER_WRITE, 1048576) // 1M
@@ -75,7 +82,6 @@ public class NatServer {
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
                 .childOption(ChannelOption.SO_SNDBUF, 1048576)
                 .childHandler(new ServerChannelHandler(clientManager));
-
         while (true) {
             try {
                 if (clientServerChannel == null) {

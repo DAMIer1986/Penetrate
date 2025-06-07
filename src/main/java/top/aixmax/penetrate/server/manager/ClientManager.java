@@ -7,14 +7,12 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.util.CollectionUtils;
-import top.aixmax.penetrate.client.config.PortMapping;
-import top.aixmax.penetrate.common.constants.ProtocolConstants;
 import top.aixmax.penetrate.common.enums.MessageType;
 import top.aixmax.penetrate.core.protocol.Message;
+import top.aixmax.penetrate.core.protocol.MessageFactory;
 import top.aixmax.penetrate.server.config.ServerConfig;
 import top.aixmax.penetrate.server.model.ClientInfo;
 
-import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
@@ -23,7 +21,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 /**
  * @author wangxu
@@ -40,13 +37,14 @@ public class ClientManager {
 
     // 远程端口 -> 客户端信息
     private final Map<Integer, List<ClientInfo>> portClientMappings = new ConcurrentHashMap<>();
-    // 外部Channel ID -> 端口映射信息
-    private final Map<String, PortMappingInfo> externalChannels = new ConcurrentHashMap<>();
 
     private final Map<Channel, ClientInfo> channelMap = new ConcurrentHashMap<>();
 
     // 服务端外网管道映射
     private final Map<String, Channel> serverChannelMap = new ConcurrentHashMap<>();
+
+    // 客户端临时管道Id与客户端信息映射
+    private final Map<Integer, ClientInfo> clientInfoMap = new ConcurrentHashMap<>();
 
     public ClientManager(ServerConfig config) {
         this.config = config;
@@ -84,20 +82,21 @@ public class ClientManager {
             return;
         }
 
-        ClientInfo clientInfo = null;
-        for (ClientInfo info : clientInfos) {
-            if (info.isActive()) {
-                clientInfo = info;
-                break;
+        ClientInfo clientInfo = clientInfoMap.get(tempId);
+        if (clientInfo == null) {
+            for (ClientInfo info : clientInfos) {
+                if (info.isActive()) {
+                    clientInfo = info;
+                    clientInfoMap.put(tempId, clientInfo);
+                    break;
+                }
+            }
+
+            if (clientInfo == null) {
+                log.warn("Non Client Active");
+                return;
             }
         }
-
-        if (clientInfo == null) {
-            log.warn("Non Client Active");
-            return;
-        }
-
-
 
         // 数据包格式：
         Message msg = new Message();
@@ -126,30 +125,24 @@ public class ClientManager {
      * 处理外部连接断开
      */
     public void handleExternalDisconnect(Channel externalChannel) {
-        String channelId = externalChannel.id().asLongText();
-        PortMappingInfo mappingInfo = externalChannels.remove(channelId);
-
-        if (mappingInfo != null) {
-            List<ClientInfo> clientInfos = portClientMappings.get(mappingInfo.getRemotePort());
-            if (!CollectionUtils.isEmpty(clientInfos)) {
-                for (ClientInfo clientInfo : clientInfos) {
-                    if (clientInfo != null && clientInfo.isActive()) {
-                        // 发送连接断开通知到客户端
-                        ByteBuffer buffer = ByteBuffer.allocate(16);
-                        buffer.putInt(mappingInfo.getRemotePort());
-                        buffer.putLong(Long.parseLong(channelId));
-                        buffer.putInt(0); // 数据长度为0表示断开连接
-
-                        clientInfo.getChannel().writeAndFlush(
-                                Unpooled.wrappedBuffer(buffer.array())
-                        );
-
-                        log.debug("Notified client {} about disconnection for port {}",
-                                clientInfo.getClientId(), mappingInfo.getRemotePort());
-                    }
+        String extId = externalChannel.id().asLongText();
+        String address = externalChannel.localAddress().toString();
+        int port = Integer.parseInt(address.split(":")[1]);
+        AtomicInteger tempId = new AtomicInteger();
+        idMap.forEach((k,v) -> {
+            if (extId.equals(v)) {
+                tempId.set(k);
+                ClientInfo clientInfo = clientInfoMap.get(k);
+                if (clientInfo != null) {
+                    clientInfo.getChannel().writeAndFlush(
+                            Unpooled.wrappedBuffer(MessageFactory.createDisconnectMessage(port, k))
+                    );
                 }
             }
-        }
+        });
+        idMap.remove(tempId.get());
+        serverChannelMap.remove(extId);
+        clientInfoMap.remove(tempId.get());
     }
 
     /**

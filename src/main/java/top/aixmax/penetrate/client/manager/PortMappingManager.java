@@ -254,13 +254,13 @@ public class PortMappingManager {
     public void handleDisconnect(Message msg) {
         // 解析端口和数据
         int localPort = mappingPort(msg.getExternalPort());
-        int serverChannelId = msg.getChannelId();
-        String localKey = localPort + "+" + serverChannelId;
+        int clientChannelId = msg.getChannelId();
+        String localKey = localPort + "+" + clientChannelId;
 
-        log.debug("Received data for port {} with channel ID {}", localPort, serverChannelId);
+        log.debug("Received Disconnect data for port {} with channel ID {}", localPort, clientChannelId);
 
         // 获取对应的本地连接
-        Channel localChannel = localConnections.get(localKey);
+        Channel localChannel = localConnections.remove(localKey);
         if (localChannel != null) {
             localChannel.close();
         }

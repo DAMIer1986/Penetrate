@@ -146,8 +146,11 @@ public class ServerChannelHandler extends AbstractMessageHandler {
                 log.debug("Data forwarded to Server channel Id {}, length: {}", msg.getChannelId(), msg.getData().length);
             } else {
                 log.warn("No active channel found for id: {}", msg.getChannelId());
-                ctx.writeAndFlush(Unpooled.wrappedBuffer(
-                        MessageFactory.createDisconnectMessage("No active channel for id: " + msg.getChannelId())));
+                ctx.writeAndFlush(
+                        Unpooled.wrappedBuffer(
+                                MessageFactory.createErrorMessage("No active channel found for id:" + msg.getChannelId())
+                        )
+                );
             }
         }
     }
