@@ -133,4 +133,19 @@ public class ClientHandler extends AbstractMessageHandler {
             log.error("Error handling incoming data", e);
         }
     }
+
+    @Override
+    public void handleDisconnect(ChannelHandlerContext ctx, Message msg) {
+        if (!authenticated) {
+            log.warn("Received data before authentication");
+            return;
+        }
+
+        try {
+            // 注销致指定连接
+            portMappingManager.handleDisconnect(msg);
+        } catch (Exception e) {
+            log.error("Error handling disconnect data", e);
+        }
+    }
 }

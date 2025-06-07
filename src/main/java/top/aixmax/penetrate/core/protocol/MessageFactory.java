@@ -64,6 +64,13 @@ public class MessageFactory {
                 .getBytes();
     }
 
+    public static byte[] createDisconnectMessage(String errorMessage) {
+        return Message.create()
+                .setType(MessageType.DISCONNECT)
+                .setData(errorMessage.getBytes(StandardCharsets.UTF_8))
+                .getBytes();
+    }
+
     /**
      * 创建端口映射确认消息
      */

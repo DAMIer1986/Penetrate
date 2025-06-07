@@ -112,6 +112,10 @@ public abstract class AbstractMessageHandler extends SimpleChannelInboundHandler
 
     }
 
+    protected void handleDisconnect(ChannelHandlerContext ctx, Message msg) {
+
+    }
+
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         log.error("Channel exception caught", cause);
@@ -176,6 +180,10 @@ public abstract class AbstractMessageHandler extends SimpleChannelInboundHandler
                 }
                 case CONNECT: {
                     handleConnect(ctx, message);
+                    break;
+                }
+                case DISCONNECT: {
+                    handleDisconnect(ctx, message);
                     break;
                 }
                 default: log.warn("Unknown message type: {}", type);

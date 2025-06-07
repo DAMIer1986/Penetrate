@@ -251,6 +251,25 @@ public class PortMappingManager {
      * 处理连接断开事件
      * 清理所有本地连接
      */
+    public void handleDisconnect(Message msg) {
+        // 解析端口和数据
+        int localPort = mappingPort(msg.getExternalPort());
+        int serverChannelId = msg.getChannelId();
+        String localKey = localPort + "+" + serverChannelId;
+
+        log.debug("Received data for port {} with channel ID {}", localPort, serverChannelId);
+
+        // 获取对应的本地连接
+        Channel localChannel = localConnections.get(localKey);
+        if (localChannel != null) {
+            localChannel.close();
+        }
+    }
+
+    /**
+     * 处理连接断开事件
+     * 清理所有本地连接
+     */
     public void handleDisconnect() {
         // 清理所有本地连接
         localConnections.forEach((key, channel) -> {

@@ -24,44 +24,51 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class ServerManager {
 
-    /** 客户端管理器，用于管理客户端连接 */
+    /**
+     * 客户端管理器，用于管理客户端连接
+     */
     private final ClientManager clientManager;
 
-    /** 外部服务器通道映射表，key为端口号，value为对应的Channel */
+    /**
+     * 外部服务器通道映射表，key为端口号，value为对应的Channel
+     */
     private final Map<Integer, Channel> channelMap;
 
-    /** Netty事件循环组，用于处理连接请求 */
+    /**
+     * Netty事件循环组，用于处理连接请求
+     */
     private final EventLoopGroup bossGroup;
 
-    /** Netty事件循环组，用于处理IO操作 */
+    /**
+     * Netty事件循环组，用于处理IO操作
+     */
     private final EventLoopGroup workerGroup;
-
-    /** Netty服务器启动器 */
-    private final ServerBootstrap bootstrap;
 
     /**
      * 构造函数
+     *
      * @param clientManager 客户端管理器
      */
     public ServerManager(ClientManager clientManager) {
         this.clientManager = clientManager;
         this.channelMap = new ConcurrentHashMap<>();
-//        this.bossGroup = new EpollEventLoopGroup(1);
-//        this.workerGroup = new EpollEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
-        this.bossGroup = new NioEventLoopGroup(1);
-        this.workerGroup = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
-        this.bootstrap = new ServerBootstrap();
+        this.bossGroup = new EpollEventLoopGroup(1);
+        this.workerGroup = new EpollEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
+//        this.bossGroup = new NioEventLoopGroup(1);
+//        this.workerGroup = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
     }
 
     /**
      * 启动外部端口监听
      * 在指定端口启动服务器，处理外部连接请求
+     *
      * @param externalPort 外部服务端口
      */
     public void startExternalServer(int externalPort) {
-        bootstrap.group(bossGroup, workerGroup)
-//                .channel(EpollServerSocketChannel.class)
-                .channel(NioServerSocketChannel.class)
+        ServerBootstrap serverBootstrap = new ServerBootstrap();
+        serverBootstrap.group(bossGroup, workerGroup)
+                .channel(EpollServerSocketChannel.class)
+//                .channel(NioServerSocketChannel.class)
                 .option(ChannelOption.SO_REUSEADDR, true)
                 .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 256)
@@ -77,7 +84,7 @@ public class ServerManager {
                     if (sc != null) {
                         sc.close().sync();
                     }
-                    sc = bootstrap.bind(externalPort).sync().channel();
+                    sc = serverBootstrap.bind(externalPort).sync().channel();
                     channelMap.put(externalPort, sc);
                     log.info("External server listening on port {}", externalPort);
                 }
