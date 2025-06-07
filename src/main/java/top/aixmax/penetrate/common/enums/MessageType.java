@@ -17,7 +17,9 @@ public enum MessageType {
     PORT_MAPPING((byte) 8),
     PORT_MAPPING_ACK((byte) 9),
     DISCONNECT((byte) 10),
-    DISCONNECT_ACK((byte) 11);
+    DISCONNECT_ACK((byte) 11),
+    CONNECT((byte) 12),
+    CONNECT_ACK((byte) 13);
 
     private final byte value;
 
@@ -36,48 +38,6 @@ public enum MessageType {
             }
         }
         return UNKNOWN;
-    }
-
-    /**
-     * 检查是否是确认类型的消息
-     */
-    public boolean isAck() {
-        return this == REGISTER_ACK
-                || this == HEARTBEAT_ACK
-                || this == DATA_ACK
-                || this == PORT_MAPPING_ACK
-                || this == DISCONNECT_ACK;
-    }
-
-    /**
-     * 获取对应的确认消息类型
-     */
-    public MessageType getAckType() {
-        switch (this) {
-            case REGISTER:
-                return REGISTER_ACK;
-            case HEARTBEAT:
-                return HEARTBEAT_ACK;
-            case DATA:
-                return DATA_ACK;
-            case PORT_MAPPING:
-                return PORT_MAPPING_ACK;
-            case DISCONNECT:
-                return DISCONNECT_ACK;
-            default:
-                return UNKNOWN;
-        }
-    }
-
-    /**
-     * 检查是否需要确认的消息类型
-     */
-    public boolean needsAck() {
-        return this == REGISTER
-                || this == HEARTBEAT
-                || this == DATA
-                || this == PORT_MAPPING
-                || this == DISCONNECT;
     }
 
     @Override

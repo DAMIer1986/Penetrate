@@ -4,6 +4,8 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 import lombok.extern.slf4j.Slf4j;
 import top.aixmax.penetrate.common.constants.ProtocolConstants;
 import top.aixmax.penetrate.server.config.ServerConfig;
@@ -31,8 +33,10 @@ public class NatServer {
         int processors = Runtime.getRuntime().availableProcessors();
         this.config = config;
         this.clientManager = new ClientManager(config);
-        this.bossGroup = new EpollEventLoopGroup(1);
-        this.workerGroup = new EpollEventLoopGroup(processors);
+//        this.bossGroup = new EpollEventLoopGroup(1);
+//        this.workerGroup = new EpollEventLoopGroup(processors);
+        this.bossGroup = new NioEventLoopGroup(1);
+        this.workerGroup = new NioEventLoopGroup(processors);
     }
 
     @PostConstruct
@@ -61,7 +65,8 @@ public class NatServer {
     private void startClientServer() {
         ServerBootstrap bootstrap = new ServerBootstrap();
         bootstrap.group(bossGroup, workerGroup)
-                .channel(EpollServerSocketChannel.class)
+//                .channel(EpollServerSocketChannel.class)
+                .channel(NioServerSocketChannel.class)
                 .option(ChannelOption.SO_REUSEADDR, true)
                 .option(ChannelOption.SO_RCVBUF, 1048576) // 1MB 发送缓冲区
                 .option(ChannelOption.SO_BACKLOG, 128)

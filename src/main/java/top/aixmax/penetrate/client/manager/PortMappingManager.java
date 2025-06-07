@@ -200,6 +200,18 @@ public class PortMappingManager {
         }
     }
 
+    public void handleConnect(Message msg) {
+        // 解析端口和数据
+        int localPort = mappingPort(msg.getExternalPort());
+        int serverChannelId = msg.getChannelId();
+
+        log.debug("Write Data : {}--{}", serverChannelId, msg.getData().length);
+
+        // 获取对应的本地连接并转发数据
+        Channel localChannel = startMapping(portMappingMap.get(msg.getExternalPort()), serverChannelId);
+        localConnections.put(localPort + "+" + serverChannelId, localChannel);
+    }
+
     /**
      * 处理连接断开事件
      */
