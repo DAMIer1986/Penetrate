@@ -4,17 +4,14 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
-import io.netty.channel.kqueue.KQueueEventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import top.aixmax.penetrate.common.constants.ProtocolConstants;
 import top.aixmax.penetrate.server.config.ServerConfig;
 import top.aixmax.penetrate.server.handler.ServerChannelHandler;
 import top.aixmax.penetrate.server.manager.ClientManager;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 
 
 /**

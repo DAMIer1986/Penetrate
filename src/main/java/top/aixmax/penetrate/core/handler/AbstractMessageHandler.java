@@ -141,14 +141,36 @@ public abstract class AbstractMessageHandler extends SimpleChannelInboundHandler
         message.setData(data);
         try {
             switch (type) {
-                case REGISTER -> handleRegister(ctx, message);
-                case REGISTER_ACK -> handleRegisterAck(ctx, message);
-                case HEARTBEAT -> handleHeartbeat(ctx);
-                case HEARTBEAT_ACK -> handleHeartbeatAck(ctx);
-                case DATA -> handleData(ctx, message);
-                case DATA_ACK -> handleDataAck(ctx, message);
-                case ERROR -> handleError(ctx, message);
-                default -> log.warn("Unknown message type: {}", type);
+                case REGISTER: {
+                    handleRegister(ctx, message);
+                    break;
+                }
+
+                case REGISTER_ACK: {
+                    handleRegisterAck(ctx, message);
+                    break;
+                }
+                case HEARTBEAT: {
+                    handleHeartbeat(ctx);
+                    break;
+                }
+                case HEARTBEAT_ACK: {
+                    handleHeartbeatAck(ctx);
+                    break;
+                }
+                case DATA: {
+                    handleData(ctx, message);
+                    break;
+                }
+                case DATA_ACK: {
+                    handleDataAck(ctx, message);
+                    break;
+                }
+                case ERROR: {
+                    handleError(ctx, message);
+                    break;
+                }
+                default: log.warn("Unknown message type: {}", type);
             }
         } catch (Exception e) {
             log.error("Error handling message: {}", type, e);

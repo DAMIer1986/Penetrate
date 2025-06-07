@@ -4,14 +4,11 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import top.aixmax.penetrate.common.constants.ProtocolConstants;
 import top.aixmax.penetrate.server.handler.ExternalHandler;
 
+import javax.annotation.PreDestroy;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,11 +22,19 @@ public class ServerManager {
 
     private final ClientManager clientManager;
 
-    private final Map<Integer, ServerChannel> channelMap;
+    private final Map<Integer, Channel> channelMap;
+
+    private final EventLoopGroup bossGroup;
+
+    private final EventLoopGroup workerGroup;
+    private final ServerBootstrap bootstrap;
 
     public ServerManager(ClientManager clientManager) {
         this.clientManager = clientManager;
         this.channelMap = new ConcurrentHashMap<>();
+        this.bossGroup = new EpollEventLoopGroup(1);
+        this.workerGroup = new EpollEventLoopGroup(Runtime.getRuntime().availableProcessors() * 128);
+        this.bootstrap = new ServerBootstrap();
     }
 
     /**
@@ -38,11 +43,6 @@ public class ServerManager {
      * @param externalPort 端口号
      */
     public void startExternalServer(int externalPort) {
-        int processors = Runtime.getRuntime().availableProcessors();
-        EventLoopGroup bossGroup = new EpollEventLoopGroup(1);
-        EventLoopGroup workerGroup = new EpollEventLoopGroup(processors * 128);
-        ServerBootstrap bootstrap = new ServerBootstrap();
-
         bootstrap.group(bossGroup, workerGroup)
                 .channel(EpollServerSocketChannel.class)
                 .option(ChannelOption.SO_REUSEADDR, true)
@@ -53,17 +53,16 @@ public class ServerManager {
                 .childOption(ChannelOption.SO_SNDBUF, 1048576)
                 .childHandler(new ExternalHandler(clientManager, externalPort));
 
-        ServerChannel sc = null;
+        Channel sc = null;
         while (true) {
             try {
                 if (sc == null) {
-                    sc = new ServerChannel(bossGroup, workerGroup, bootstrap.bind(externalPort).sync().channel(), externalPort);
+                    sc = bootstrap.bind(externalPort).sync().channel();
                     log.info("External server listening on port {}", externalPort);
-                } else if (!sc.channel.isActive()) {
-                    sc.channel.close().sync();
+                } else if (!sc.isActive()) {
+                    sc.close().sync();
                     // 启动客户端监听服务器
-                    sc = new ServerChannel(bossGroup, workerGroup,
-                            bootstrap.bind(externalPort).sync().channel(), externalPort);
+                    sc = bootstrap.bind(externalPort).sync().channel();
                     log.info("External server re listening on port {}", externalPort);
                 }
                 channelMap.put(externalPort, sc);
@@ -78,20 +77,17 @@ public class ServerManager {
     @PreDestroy
     public void stop(int externalPort) {
         log.info("Stopping NAT server...");
-        ServerChannel sc = channelMap.remove(externalPort);
+        Channel sc = channelMap.remove(externalPort);
         try {
-            sc.channel.closeFuture().sync();
+            sc.closeFuture().sync();
         } catch (InterruptedException e) {
             log.warn("Interrupted while closing server channels", e);
             Thread.currentThread().interrupt();
         } finally {
-            sc.bossGroup.shutdownGracefully();
-            sc.workerGroup.shutdownGracefully();
+            bossGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully();
             log.info("NAT server stopped");
         }
-    }
-
-    private record ServerChannel(EventLoopGroup bossGroup, EventLoopGroup workerGroup, Channel channel, int port) {
     }
 
 }

@@ -7,8 +7,6 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import top.aixmax.penetrate.client.config.PortMapping;
@@ -17,11 +15,8 @@ import top.aixmax.penetrate.client.manager.PortMappingManager;
 import top.aixmax.penetrate.common.constants.ProtocolConstants;
 import top.aixmax.penetrate.config.ClientConfig;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.TimeUnit;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 
 /**
  * @author wangxu
@@ -102,9 +97,14 @@ public class NatClient {
                     ChannelFuture future = bootstrap.connect(config.getServerHost(), config.getServerPort()).sync();
                     // Wait until the connection is closed
                     future.channel().closeFuture().sync();
-                    Thread.sleep(ProtocolConstants.waitTime);
                 } catch (Exception ex) {
-                    group.shutdownGracefully();
+                    log.error(ex.getMessage(), ex);
+                } finally {
+                    try {
+                        Thread.sleep(ProtocolConstants.waitTime);
+                    } catch (InterruptedException e) {
+                        log.error(e.getMessage(), e);
+                    }
                 }
             }
         }).start();

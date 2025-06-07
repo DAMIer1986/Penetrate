@@ -30,15 +30,15 @@ nat:
     server-port: 61927
     enable-ssl: false
     port-mappings:
-      - local-port: 80
-        remote-port: 61986
+      - local-port: 22
+        remote-port: 16622
         protocol: tcp
         enabled: true
         max-connections: 100
         connection-timeout: 5000
         idle-timeout: 600
-        local-host: 127.0.0.1
-    client-id: test001
+        local-host: 192.168.31.70
+    client-id: LiuYu001
     sort: 1
 
 management:

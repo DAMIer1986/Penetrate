@@ -5,13 +5,13 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import top.aixmax.penetrate.client.config.PortMapping;
 import top.aixmax.penetrate.client.handler.LocalChannelHandler;
 import top.aixmax.penetrate.config.ClientConfig;
 import top.aixmax.penetrate.core.protocol.Message;
 
+import javax.annotation.PreDestroy;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
